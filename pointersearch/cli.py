@@ -110,6 +110,42 @@ def cmd_info(a):
         print(json.dumps(d, indent=2))
 
 
+def cmd_stats(a):
+    """Text summary of a mission for tuning thresholds without screenshots."""
+    import statistics
+    from collections import Counter, defaultdict
+    from .store import Store
+    st = Store(a.workdir)
+    imgs = st.list_images()
+    cands = st.list_candidates()
+    print(f"images: {len(imgs)}  ok={sum(i['status']=='ok' for i in imgs)}  "
+          f"by source: {dict(Counter(i['source'] for i in imgs))}")
+    pitches = [i["gimbal_pitch"] for i in imgs if i.get("gimbal_pitch") is not None]
+    alts = [i["rel_alt"] for i in imgs if i.get("rel_alt") is not None]
+    gsds = [i["gsd_m"] for i in imgs if i.get("gsd_m")]
+    if pitches:
+        print(f"gimbal pitch: min {min(pitches):.0f} / median {statistics.median(pitches):.0f} / max {max(pitches):.0f} deg")
+    if alts:
+        print(f"rel altitude: min {min(alts):.0f} / median {statistics.median(alts):.0f} / max {max(alts):.0f} m")
+    if gsds:
+        print(f"centre gsd:   median {statistics.median(gsds):.3f} m/px")
+    print(f"overlays: {sum(1 for i in imgs if i['overlay_png'])}   candidates: {len(cands)}  "
+          f"({len(cands)/max(1,len(imgs)):.1f} per image)")
+    by = defaultdict(list)
+    for c in cands:
+        by[c["detector"]].append(c)
+    for det, cs in sorted(by.items()):
+        scores = sorted(c["score"] for c in cs)
+        areas = sorted(c["area_m2"] for c in cs if c["area_m2"] is not None)
+        q = lambda xs, f: xs[min(len(xs)-1, int(f*len(xs)))] if xs else 0
+        status = Counter(c["status"] for c in cs)
+        print(f"\n[{det}] n={len(cs)}  score p50={q(scores,.5):.1f} p90={q(scores,.9):.1f} max={scores[-1]:.1f}  "
+              f"area m2 p50={q(areas,.5):.2f} p90={q(areas,.9):.2f}  status={dict(status)}")
+        for c in cs[:a.top]:
+            print(f"   #{c['id']:<5} score {c['score']:>8.1f}  {c['area_m2']:>6.2f} m2  "
+                  f"{c['lat']:.6f},{c['lon']:.6f}  {Path(c['image_path']).name}  {c['status']}")
+
+
 def cmd_demo(a):
     from .devtools.synthetic import generate_mission
     from .pipeline import Pipeline
@@ -169,6 +205,10 @@ def main(argv=None):
     s.add_argument("images", nargs="+")
     s.add_argument("--raw", action="store_true", help="include every drone-dji XMP field as written by the firmware")
     s.set_defaults(fn=cmd_info)
+
+    s = sub.add_parser("stats", help="print a text summary of images and candidates (for threshold tuning)")
+    s.add_argument("workdir"); s.add_argument("--top", type=int, default=8, help="top candidates to list per detector")
+    s.set_defaults(fn=cmd_stats)
 
     s = sub.add_parser("demo", help="generate and process a synthetic mission")
     s.add_argument("workdir"); s.add_argument("--no-thermal", action="store_true"); s.set_defaults(fn=cmd_demo)
