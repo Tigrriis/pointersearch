@@ -102,9 +102,11 @@ def cmd_info(a):
         m = read_image_meta(f)
         g = Georeferencer(m, cfg.camera)
         d = m.to_dict()
-        d.pop("dji", None)
+        raw = d.pop("dji", {})
         d.update({"focal_px": round(focal_px(m, cfg.camera), 1), "hfov_deg": round(hfov_deg(m, cfg.camera), 1),
                   "gsd_m_nadir": round(gsd_m(m, cfg.camera), 4), "footprint": g.footprint_latlon()})
+        if a.raw:
+            d["xmp_drone_dji"] = raw
         print(json.dumps(d, indent=2))
 
 
@@ -164,7 +166,9 @@ def main(argv=None):
     s.set_defaults(fn=cmd_merge)
 
     s = sub.add_parser("info", help="print metadata, GSD and footprint for images")
-    s.add_argument("images", nargs="+"); s.set_defaults(fn=cmd_info)
+    s.add_argument("images", nargs="+")
+    s.add_argument("--raw", action="store_true", help="include every drone-dji XMP field as written by the firmware")
+    s.set_defaults(fn=cmd_info)
 
     s = sub.add_parser("demo", help="generate and process a synthetic mission")
     s.add_argument("workdir"); s.add_argument("--no-thermal", action="store_true"); s.set_defaults(fn=cmd_demo)
