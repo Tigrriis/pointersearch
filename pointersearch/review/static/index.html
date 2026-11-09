@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pointersearch review</title>
+<link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header>
+  <div class="brand">pointersearch <span id="mission"></span></div>
+  <div class="stats" id="stats"></div>
+  <div class="controls">
+    <label><input type="checkbox" id="f-rx" checked> colour (RX)</label>
+    <label><input type="checkbox" id="f-bright" checked> bright</label>
+    <label><input type="checkbox" id="f-thermal" checked> thermal</label>
+    <label><input type="checkbox" id="f-rejected"> show rejected</label>
+    <label><input type="checkbox" id="f-overlays" checked> imagery</label>
+    <a class="btn" href="/api/export.gpx?status=accepted" download>GPX</a>
+    <a class="btn" href="/api/export.kml?status=accepted" download>KML</a>
+    <a class="btn" href="/api/export.geojson?status=all" download>GeoJSON</a>
+  </div>
+</header>
+<main>
+  <div id="map"></div>
+  <aside>
+    <div class="detail" id="detail">
+      <div class="hint">Select a candidate. Keys: <b>A</b> accept, <b>R</b> reject, <b>U</b> undo, <b>N</b>/<b>P</b> next/prev, <b>F</b> full image.</div>
+    </div>
+    <ul id="list"></ul>
+  </aside>
+</main>
+<script src="/static/vendor/leaflet/leaflet.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

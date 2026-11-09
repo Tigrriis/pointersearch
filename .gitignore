@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+# Mission working directories created by `pointersearch init`
+missions/
+demo/
+*.db
+*.db-wal
+*.db-shm
