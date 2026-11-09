@@ -33,9 +33,10 @@ _TAG_DATETIME = 306
 _IFD_EXIF = 0x8769
 _IFD_GPS = 0x8825
 
-# Filename suffix convention used by DJI enterprise aircraft (M30T, M3T, M4T):
-# DJI_20250101120000_0001_W.JPG  -> W wide, Z zoom/tele, T thermal, V visible
-_SUFFIX_SOURCE = {"W": "wide", "V": "wide", "Z": "zoom", "T": "thermal", "S": "screen"}
+# Filename suffix convention used by DJI aircraft:
+# DJI_20250101120000_0001_W.JPG  -> W wide, Z zoom/tele, T thermal, V visible (enterprise)
+# DJI_20250101120000_0001_D.JPG  -> D default camera (Mini / Air / Mavic consumer lines)
+_SUFFIX_SOURCE = {"W": "wide", "V": "wide", "D": "wide", "Z": "zoom", "T": "thermal", "S": "screen"}
 
 
 class MetadataError(ValueError):
@@ -60,6 +61,7 @@ class ImageMeta:
     captured_at: Optional[str] = None   # ISO 8601
     lrf_distance: Optional[float] = None
     rtk: bool = False
+    product: Optional[str] = None       # drone-dji:ProductName, e.g. "M4T", "Mini4 Pro"
     dji: dict = field(default_factory=dict)
 
     @property
@@ -114,7 +116,7 @@ def _source_from_name(path: Path, dji: dict) -> str:
     if "wide" in src or "visible" in src:
         return "wide"
     stem = path.stem.upper()
-    m = re.search(r"_([WVZTS])$", stem)
+    m = re.search(r"_([WVDZTS])$", stem)
     if m:
         return _SUFFIX_SOURCE.get(m.group(1), "unknown")
     return "unknown"
@@ -174,5 +176,6 @@ def read_image_meta(path: str | Path) -> ImageMeta:
         captured_at=captured,
         lrf_distance=_to_float(dji.get("LRFTargetDistance")),
         rtk=str(dji.get("RtkFlag", "0")).strip() not in ("", "0"),
+        product=dji.get("ProductName") or None,
         dji=dji,
     )
