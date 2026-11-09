@@ -88,6 +88,7 @@ class Config:
     bright: BrightColourConfig = field(default_factory=BrightColourConfig)
     thermal: ThermalConfig = field(default_factory=ThermalConfig)
     mosaic: MosaicConfig = field(default_factory=MosaicConfig)
+    group_radius_m: float = 3.0          # sightings closer than this are one object
     thumb_window_m: float = 4.0          # ground width of candidate thumbnails
     thumb_min_px: int = 160
     thumb_max_px: int = 512

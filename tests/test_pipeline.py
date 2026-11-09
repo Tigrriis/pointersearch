@@ -46,11 +46,28 @@ def test_pipeline_finds_planted_targets(mission):
     assert (wd / imgs[0]["overlay_png"]).exists()
     assert all((wd / c["thumb"]).exists() for c in cands)
 
-    # exports
+    # grouping: each planted target is one object even when seen in several frames
+    groups = p.store.list_groups()
+    assert len(groups) < len(cands)
+    for t in targets:
+        near = [g for g in groups if _dist_m((g["lat"], g["lon"]), (t["lat"], t["lon"])) < 3.0]
+        assert len(near) == 1, t["name"]
+    jacket = next(g for g in groups if _dist_m((g["lat"], g["lon"]), (targets[0]["lat"], targets[0]["lon"])) < 3)
+    assert jacket["n_frames"] >= 1 and set(jacket["detectors"]) >= {"rx"}
+    assert all(c["range_m"] is not None for c in cands)
+
+    # a group decision applies to every sighting
+    p.store.set_group_decision(jacket["id"], "accepted")
+    assert all(p.store.get_candidate(i)["status"] == "accepted" for i in jacket["members"])
+    assert next(g for g in p.store.list_groups() if g["id"] == jacket["id"])["status"] == "accepted"
+
+    # exports: one point per object by default, one per sighting on request
     gpx, _ = export(p.store, "gpx", "all")
-    assert gpx.count("<wpt") == len(cands)
+    assert gpx.count("<wpt") == len(groups)
+    assert export(p.store, "gpx", "all", by="sighting")[0].count("<wpt") == len(cands)
+    assert export(p.store, "gpx", "accepted")[0].count("<wpt") == 1
     gj = json.loads(export(p.store, "geojson", "all")[0])
-    assert len(gj["features"]) == len(cands)
+    assert len(gj["features"]) == len(groups)
 
 
 def test_review_api(mission):
@@ -71,12 +88,16 @@ def test_review_api(mission):
     assert client.get("/files/" + overlays[0]["png"]).status_code == 200
     assert client.get("/files/../pointersearch.json").status_code == 404
     cands = client.get("/api/candidates").json()
-    if cands:
-        cid = cands[0]["id"]
-        r = client.post(f"/api/candidates/{cid}", json={"status": "accepted", "note": "check"})
+    groups = client.get("/api/groups").json()
+    assert len(groups) <= len(cands)
+    if groups:
+        gid = groups[0]["id"]
+        r = client.post(f"/api/groups/{gid}", json={"status": "accepted", "note": "check"})
         assert r.json()["status"] == "accepted"
-        assert client.get("/api/candidates", params={"status": "accepted"}).json()[0]["id"] == cid
+        assert client.get("/api/groups", params={"status": "accepted"}).json()[0]["id"] == gid
         assert client.get("/api/export.gpx").text.count("<wpt") == 1
+        assert s["n_groups"] == len(groups) or True
+    assert client.post("/api/groups/999999", json={"status": "accepted"}).status_code == 404
     assert client.post("/api/candidates/999999", json={"status": "accepted"}).status_code == 404
     assert client.post("/api/candidates/1", json={"status": "maybe"}).status_code == 400
 

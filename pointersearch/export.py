@@ -16,6 +16,8 @@ def _name(c: dict) -> str:
 def _desc(c: dict) -> str:
     bits = [f"detector={c['detector']}", f"score={c['score']:.2f}", f"status={c['status']}",
             f"image={Path(c['image_path']).name}", f"area_m2={c.get('area_m2')}"]
+    if c.get("n_frames"):
+        bits.append(f"seen_in_frames={c['n_frames']}")
     if c.get("extra", {}).get("peak_temp_c") is not None:
         bits.append(f"peak_temp_c={c['extra']['peak_temp_c']:.1f}")
     if c.get("note"):
@@ -63,7 +65,20 @@ FORMATS = {"gpx": (to_gpx, "application/gpx+xml"),
            "geojson": (to_geojson, "application/geo+json")}
 
 
-def export(store: Store, fmt: str, status: str | None = "accepted") -> tuple[str, str]:
+def _flatten_group(g: dict) -> dict:
+    """A group as a candidate-like record: best sighting's details, group position/status."""
+    rec = dict(g["best"])
+    rec.update({"id": g["id"], "lat": g["lat"], "lon": g["lon"], "status": g["status"],
+                "n_frames": g["n_frames"], "note": g["note"]})
+    return rec
+
+
+def export(store: Store, fmt: str, status: str | None = "accepted", by: str = "group") -> tuple[str, str]:
+    """``by='group'`` writes one point per object; ``by='sighting'`` one per detection."""
     fn, mime = FORMATS[fmt]
-    cands = store.list_candidates(status=None if status in (None, "all") else status)
-    return fn(cands), mime
+    st = None if status in (None, "all") else status
+    if by == "group":
+        records = [_flatten_group(g) for g in store.list_groups(status=st)]
+    else:
+        records = store.list_candidates(status=st)
+    return fn(records), mime

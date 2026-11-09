@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from pathlib import Path
 
 import cv2
@@ -106,13 +107,16 @@ class Pipeline:
             ll = geo.pixel_to_latlon(c.px, c.py)
             if ll is None:
                 continue
+            ne = geo.pixel_to_ne(c.px, c.py)
+            range_m = math.hypot(*ne) if ne else None
             thumb_name = f"{path.stem}_{c.detector}_{i:02d}.jpg"
             cv2.imwrite(str(self.thumb_dir / thumb_name), crop_thumbnail(image, c, thumb_window_px),
                         [cv2.IMWRITE_JPEG_QUALITY, 85])
             rows.append({"detector": c.detector, "score": round(c.score, 3), "px": c.px, "py": c.py,
                          "bbox": list(c.bbox), "area_m2": round(c.area_m2, 3), "lat": ll[0], "lon": ll[1],
-                         "thumb": f"thumbs/{thumb_name}", "extra": c.extra})
+                         "thumb": f"thumbs/{thumb_name}", "extra": c.extra, "range_m": range_m})
         self.store.replace_candidates(image_id, rows)
+        self.store.regroup(self.cfg.group_radius_m)
         log.info("%s: %s, gsd %.3f m/px, %d candidates", path.name, meta.source, centre_gsd, len(rows))
         return True
 

@@ -26,11 +26,12 @@
       fetch('/api/summary').then(r => r.json()),
       fetch('/api/overlays').then(r => r.json()),
       fetch('/api/images').then(r => r.json()),
-      fetch('/api/candidates').then(r => r.json()),
+      fetch('/api/groups').then(r => r.json()),
     ]);
     $('mission').textContent = summary.mission || '';
     const c = summary.candidates || {};
-    $('stats').textContent = `${summary.images_ok} images · ${c.pending || 0} pending · ${c.accepted || 0} accepted · ${c.rejected || 0} rejected`;
+    const g = summary.groups || {};
+    $('stats').textContent = `${summary.images_ok} images · ${summary.n_groups || 0} objects (${g.pending || 0} pending · ${g.accepted || 0} accepted · ${g.rejected || 0} rejected) from ${Object.values(c).reduce((a, b) => a + b, 0)} sightings`;
 
     overlays.forEach(o => {
       if (!state.overlays.has(o.id)) {
@@ -53,7 +54,7 @@
 
   function visible(c) {
     const f = filters();
-    if (!f[c.detector]) return false;
+    if (!c.detectors.some(d => f[d])) return false;
     if (c.status === 'rejected' && !f.rejected) return false;
     return true;
   }
@@ -72,16 +73,16 @@
         radius: c.status === 'accepted' ? 9 : 6, color: c.status === 'accepted' ? '#3dc47e' : color,
         weight: c.status === 'rejected' ? 1 : 2, fillColor: color, fillOpacity: c.status === 'rejected' ? 0.15 : 0.6,
       }).on('click', () => select(c.id, false));
-      m.bindTooltip(`${c.detector} ${c.score.toFixed(1)} · ${c.status}`);
+      m.bindTooltip(`${c.detectors.join('+')} ${c.score.toFixed(1)} · ${c.n_frames} frame${c.n_frames > 1 ? 's' : ''} · ${c.status}`);
       markerGroup.addLayer(m);
       state.markers.set(c.id, m);
 
       const li = document.createElement('li');
       li.dataset.id = c.id;
       if (c.id === state.sel) li.classList.add('sel');
-      li.innerHTML = `<img loading="lazy" src="/files/${c.thumb}">
-        <div><div class="title"><span class="badge ${c.detector}">${c.detector}</span> ${c.score.toFixed(1)}</div>
-        <div class="sub">${c.area_m2 ?? '?'} m² · ${baseName(c.image_path)}</div></div>
+      li.innerHTML = `<img loading="lazy" src="/files/${c.best.thumb}">
+        <div><div class="title">${c.detectors.map(d => `<span class="badge ${d}">${d}</span>`).join(' ')} ${c.score.toFixed(1)}</div>
+        <div class="sub">${c.area_m2 ?? '?'} m² · seen in ${c.n_frames} frame${c.n_frames > 1 ? 's' : ''}${c.min_range_m != null ? ' · ' + Math.round(c.min_range_m) + ' m from aircraft' : ''}</div></div>
         <div class="st ${c.status}">${c.status}</div>`;
       li.addEventListener('click', () => select(c.id, true));
       list.appendChild(li);
@@ -106,12 +107,14 @@
     const c = state.cands.find(x => x.id === state.sel);
     const el = $('detail');
     if (!c) { el.innerHTML = '<div class="hint">Select a candidate. Keys: <b>A</b> accept, <b>R</b> reject, <b>U</b> undo, <b>N</b>/<b>P</b> next/prev, <b>F</b> full image.</div>'; return; }
-    const temp = c.extra && c.extra.peak_temp_c != null ? ` · ${c.extra.peak_temp_c.toFixed(1)} °C` : '';
-    el.innerHTML = `<img src="/files/${c.thumb}">
-      <div class="meta"><span><span class="badge ${c.detector}">${c.detector}</span> score ${c.score.toFixed(2)}${temp}</span>
+    const b = c.best;
+    const temp = b.extra && b.extra.peak_temp_c != null ? ` · ${b.extra.peak_temp_c.toFixed(1)} °C` : '';
+    const strip = c.thumbs.length > 1 ? `<div class="strip">${c.thumbs.slice(1).map(t => `<img src="/files/${t}">`).join('')}</div>` : '';
+    el.innerHTML = `<img src="/files/${b.thumb}">${strip}
+      <div class="meta"><span>${c.detectors.map(d => `<span class="badge ${d}">${d}</span>`).join(' ')} score ${c.score.toFixed(2)}${temp}</span>
       <span class="st ${c.status}">${c.status}</span></div>
-      <div class="meta"><span>${c.lat.toFixed(6)}, ${c.lon.toFixed(6)}</span><span>${c.area_m2 ?? '?'} m²</span></div>
-      <div class="meta"><span>${baseName(c.image_path)}</span><a class="btn" href="/image/${c.image_id}" target="_blank">full image</a></div>
+      <div class="meta"><span>${c.lat.toFixed(6)}, ${c.lon.toFixed(6)}</span><span>${c.area_m2 ?? '?'} m² · ${c.n_sightings} sighting${c.n_sightings > 1 ? 's' : ''} in ${c.n_frames} frame${c.n_frames > 1 ? 's' : ''}</span></div>
+      <div class="meta"><span>${baseName(b.image_path)}</span><a class="btn" href="/image/${b.image_id}" target="_blank">full image</a></div>
       <div class="actions"><button class="accept">Accept (A)</button><button class="reject">Reject (R)</button><button class="undo">Undo (U)</button></div>`;
     el.querySelector('.accept').onclick = () => decide('accepted');
     el.querySelector('.reject').onclick = () => decide('rejected');
@@ -121,7 +124,7 @@
   async function decide(status) {
     if (!state.sel) return;
     const id = state.sel;
-    const updated = await fetch(`/api/candidates/${id}`, {
+    const updated = await fetch(`/api/groups/${id}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }),
     }).then(r => r.json());
     const i = state.cands.findIndex(x => x.id === id);
@@ -151,7 +154,7 @@
     else if (k === 'u') decide('pending');
     else if (k === 'n' || k === 'j') step(1);
     else if (k === 'p' || k === 'k') step(-1);
-    else if (k === 'f' && state.sel) { const c = state.cands.find(x => x.id === state.sel); window.open(`/image/${c.image_id}`); }
+    else if (k === 'f' && state.sel) { const c = state.cands.find(x => x.id === state.sel); window.open(`/image/${c.best.image_id}`); }
   });
 
   refresh();

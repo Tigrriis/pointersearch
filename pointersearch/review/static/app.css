@@ -32,3 +32,5 @@ aside { background:var(--panel); border-left:1px solid #000; display:flex; flex-
 .st.accepted { color:var(--ok);} .st.rejected { color:var(--bad);}
 .leaflet-container { font: inherit; }
 @media (max-width: 800px) { main { grid-template-columns: 1fr; grid-template-rows: 55% 45%; } aside { border-left:0; border-top:1px solid #000; } }
+.strip { display:flex; gap:4px; margin-top:4px; overflow-x:auto; }
+.strip img { width:64px; height:64px; object-fit:cover; border-radius:3px; flex:0 0 auto; }

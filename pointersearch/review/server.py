@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from ..config import Config
 from ..export import FORMATS, export
 from ..store import Store
 
@@ -27,6 +28,7 @@ class Decision(BaseModel):
 def create_app(workdir: str | Path, tiles_dir: str | Path | None = None, mission_name: str | None = None) -> FastAPI:
     workdir = Path(workdir).resolve()
     store = Store(workdir)
+    store.regroup(Config.load(workdir).group_radius_m)   # missions processed before grouping existed
     app = FastAPI(title="pointersearch review", docs_url=None, redoc_url=None)
     app.state.store = store
 
@@ -63,11 +65,26 @@ def create_app(workdir: str | Path, tiles_dir: str | Path | None = None, mission
             raise HTTPException(404, "no such candidate")
         return store.get_candidate(cid)
 
+    @app.get("/api/groups")
+    def groups(status: str | None = None):
+        return store.list_groups(status=status)
+
+    @app.post("/api/groups/{gid}")
+    def decide_group(gid: int, d: Decision):
+        try:
+            n = store.set_group_decision(gid, d.status, d.note)
+        except ValueError:
+            raise HTTPException(400, "status must be pending|accepted|rejected")
+        if not n:
+            raise HTTPException(404, "no such group")
+        g = next((g for g in store.list_groups() if g["id"] == gid), None)
+        return g or {"id": gid, "status": d.status, "updated": n}
+
     @app.get("/api/export.{fmt}")
-    def export_route(fmt: str, status: str = "accepted"):
+    def export_route(fmt: str, status: str = "accepted", by: str = "group"):
         if fmt not in FORMATS:
             raise HTTPException(404, "format must be one of " + ", ".join(FORMATS))
-        body, mime = export(store, fmt, status)
+        body, mime = export(store, fmt, status, by=by)
         return Response(body, media_type=mime,
                         headers={"Content-Disposition": f'attachment; filename="candidates_{status}.{fmt}"'})
 

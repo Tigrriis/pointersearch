@@ -64,7 +64,7 @@ def cmd_serve(a):
 def cmd_export(a):
     from .export import export
     from .store import Store
-    body, _ = export(Store(a.workdir), a.format, a.status)
+    body, _ = export(Store(a.workdir), a.format, a.status, by=a.by)
     if a.output:
         Path(a.output).write_text(body)
         print(f"wrote {a.output}")
@@ -116,6 +116,7 @@ def cmd_stats(a):
     from collections import Counter, defaultdict
     from .store import Store
     st = Store(a.workdir)
+    st.regroup(Config.load(Path(a.workdir)).group_radius_m)
     imgs = st.list_images()
     cands = st.list_candidates()
     print(f"images: {len(imgs)}  ok={sum(i['status']=='ok' for i in imgs)}  "
@@ -129,8 +130,14 @@ def cmd_stats(a):
         print(f"rel altitude: min {min(alts):.0f} / median {statistics.median(alts):.0f} / max {max(alts):.0f} m")
     if gsds:
         print(f"centre gsd:   median {statistics.median(gsds):.3f} m/px")
-    print(f"overlays: {sum(1 for i in imgs if i['overlay_png'])}   candidates: {len(cands)}  "
-          f"({len(cands)/max(1,len(imgs)):.1f} per image)")
+    groups = st.list_groups()
+    multi = sum(1 for g in groups if g["n_frames"] > 1)
+    print(f"overlays: {sum(1 for i in imgs if i['overlay_png'])}   sightings: {len(cands)}  "
+          f"({len(cands)/max(1,len(imgs)):.1f} per image)   objects: {len(groups)}  ({multi} seen in >1 frame)")
+    print("top objects:")
+    for g in groups[:a.top]:
+        print(f"   G{g['id']:<5} score {g['score']:>8.1f}  {'+'.join(g['detectors']):<18} "
+              f"{g['n_frames']:>3} frames  {g['lat']:.6f},{g['lon']:.6f}  {g['status']}")
     by = defaultdict(list)
     for c in cands:
         by[c["detector"]].append(c)
@@ -195,6 +202,8 @@ def main(argv=None):
     s = sub.add_parser("export", help="export candidates as GPX/KML/GeoJSON")
     s.add_argument("workdir"); s.add_argument("--format", choices=["gpx", "kml", "geojson"], default="gpx")
     s.add_argument("--status", default="accepted", help="accepted | pending | rejected | all")
+    s.add_argument("--by", choices=["group", "sighting"], default="group",
+                   help="one point per object (group) or per detection (sighting)")
     s.add_argument("-o", "--output"); s.set_defaults(fn=cmd_export)
 
     s = sub.add_parser("merge", help="merge all overlays into one georeferenced PNG (+ world file)")

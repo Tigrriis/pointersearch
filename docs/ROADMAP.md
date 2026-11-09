@@ -10,7 +10,7 @@
 - Self-hosted DJI Cloud API endpoint (MQTT broker + S3-compatible store, e.g.
   Mosquitto + MinIO) on the base laptop so DJI Pilot 2 auto-uploads stills over a
   local hotspot. Live telemetry gives the aircraft track on the review map.
-- Candidate de-duplication across overlapping frames (cluster within 2-3 m).
+- [x] Candidate de-duplication across overlapping frames (grouped within `group_radius_m`)
 - Aircraft track and searched-area coverage layer from frame footprints.
 
 ## Phase 3: learned detection
