@@ -18,8 +18,17 @@
   const filters = () => ({
     rx: $('f-rx').checked, bright: $('f-bright').checked, thermal: $('f-thermal').checked,
     rejected: $('f-rejected').checked, overlays: $('f-overlays').checked,
+    minScore: +$('f-minscore').value || 0, minFrames: +$('f-minframes').value || 1,
   });
-  ['f-rx', 'f-bright', 'f-thermal', 'f-rejected', 'f-overlays'].forEach(id => $(id).addEventListener('change', render));
+  const FILTER_IDS = ['f-rx', 'f-bright', 'f-thermal', 'f-rejected', 'f-overlays', 'f-minscore', 'f-minframes'];
+  try {  // remember filter settings per browser
+    const saved = JSON.parse(localStorage.getItem('ps-filters') || '{}');
+    FILTER_IDS.forEach(id => { if (id in saved) { const el = $(id); el.type === 'checkbox' ? el.checked = saved[id] : el.value = saved[id]; } });
+  } catch (e) { /* storage unavailable */ }
+  FILTER_IDS.forEach(id => $(id).addEventListener(id.startsWith('f-min') ? 'input' : 'change', () => {
+    try { localStorage.setItem('ps-filters', JSON.stringify(Object.fromEntries(FILTER_IDS.map(i => [i, $(i).type === 'checkbox' ? $(i).checked : $(i).value])))); } catch (e) {}
+    render();
+  }));
 
   async function refresh() {
     const [summary, overlays, images, cands] = await Promise.all([
@@ -56,6 +65,12 @@
     const f = filters();
     if (!c.detectors.some(d => f[d])) return false;
     if (c.status === 'rejected' && !f.rejected) return false;
+    if (c.n_frames < f.minFrames) return false;
+    // Score floor applies to the colour-anomaly scale only; thermal and bright use different units.
+    if (f.minScore > 0 && c.detectors.includes('rx') && !c.detectors.includes('thermal')) {
+      const rxBest = c.rx_score != null ? c.rx_score : (c.detector === 'rx' ? c.score : 0);
+      if (rxBest < f.minScore) return false;
+    }
     return true;
   }
 
@@ -67,6 +82,7 @@
     markerGroup.clearLayers();
     state.markers.clear();
     const shown = state.cands.filter(visible);
+    $('shown').textContent = `showing ${shown.length} of ${state.cands.length}`;
     shown.forEach(c => {
       const color = COLORS[c.detector] || '#fff';
       const m = L.circleMarker([c.lat, c.lon], {

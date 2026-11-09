@@ -215,6 +215,7 @@ class Store:
                 "detectors": sorted({c["detector"] for c in members}),
                 "n_sightings": len(members), "n_frames": len({c["image_id"] for c in members}),
                 "min_range_m": nearest["range_m"], "area_m2": best["area_m2"],
+                "rx_score": max((c["score"] for c in members if c["detector"] == "rx"), default=None),
                 "best": best, "members": [c["id"] for c in members],
                 "thumbs": [c["thumb"] for c in members[:8]],
                 "note": next((c["note"] for c in members if c["note"]), None),

@@ -17,6 +17,9 @@
     <label><input type="checkbox" id="f-thermal" checked> thermal</label>
     <label><input type="checkbox" id="f-rejected"> show rejected</label>
     <label><input type="checkbox" id="f-overlays" checked> imagery</label>
+    <label title="hide objects whose best colour-anomaly score is below this">min RX <input type="number" id="f-minscore" value="0" min="0" step="10" style="width:5em"></label>
+    <label title="hide objects seen in fewer frames than this">min frames <select id="f-minframes"><option>1</option><option>2</option><option>3</option></select></label>
+    <span class="stats" id="shown"></span>
     <a class="btn" href="/api/export.gpx?status=accepted" download>GPX</a>
     <a class="btn" href="/api/export.kml?status=accepted" download>KML</a>
     <a class="btn" href="/api/export.geojson?status=all" download>GeoJSON</a>
