@@ -28,11 +28,26 @@ Use cases: missing persons (alive or deceased), lost dogs and other animals.
 
 Python 3.10+ on the base laptop.
 
+Linux / macOS:
+
 ```bash
-git clone <this repo> && cd pointersearch
-python3 -m venv .venv && . .venv/bin/activate      # Windows: .venv\Scripts\activate
+git clone https://github.com/Tigrriis/pointersearch && cd pointersearch
+python3 -m venv .venv && . .venv/bin/activate
 pip install -e ".[dev]"
 ```
+
+Windows (PowerShell, one line at a time; `&&` is not supported):
+
+```powershell
+git clone https://github.com/Tigrriis/pointersearch
+cd pointersearch
+py -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -e ".[dev]"
+```
+
+If `Activate.ps1` is blocked, run `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass`
+first, or skip activation and call `.venv\Scripts\pointersearch.exe` directly.
 
 Try it without an aircraft (generates a synthetic mission with planted targets):
 
@@ -55,7 +70,7 @@ pointersearch init missions/2025-06-01-grose-valley
 After each battery, pull the SD card and run:
 
 ```bash
-pointersearch process missions/2025-06-01-grose-valley /media/sdcard/DCIM/DJI_001
+pointersearch process missions/2025-06-01-grose-valley /media/sdcard/DCIM/DJI_001   # Windows: E:\DCIM\DJI_001
 ```
 
 Or, if photos are arriving in a folder continuously (see
