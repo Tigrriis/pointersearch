@@ -23,7 +23,8 @@ Use cases: missing persons (alive or deceased), lost dogs and other animals.
 5. **Group** sightings of the same object across overlapping frames, so the
    reviewer sees one marker per object with "seen in N frames".
 6. **Review** on a local Leaflet map: thumbnails, accept/reject with keyboard,
-   filters per detector, live refresh while the aircraft is still flying.
+   filters per detector, live refresh while the aircraft is still flying. Switch
+   each object between the wide, zoom and thermal frames of the same moment.
 7. **Export** accepted objects as GPX, KML or GeoJSON for ground teams.
 8. **Plan search routes**: draw a line or a search area on the map and export a
    route for DJI Pilot 2 that takes photos at an even spacing

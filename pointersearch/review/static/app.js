@@ -2,7 +2,9 @@
 (function () {
   const COLORS = { rx: '#f06292', bright: '#ffb74d', thermal: '#ef5350' };
   const STATUS_LABEL = { followup: 'follow-up' };
-  const state = { cands: [], markers: new Map(), overlays: new Map(), sel: null, lastId: 0, fitted: false };
+  const state = { cands: [], markers: new Map(), overlays: new Map(), sel: null, lastId: 0, fitted: false,
+    views: new Map(), lens: null, imageCount: 0, shot: new Map() };   // shot: object id -> sighting chosen by the reviewer
+  try { state.lens = localStorage.getItem('ps-lens') || null; } catch (e) { /* storage unavailable */ }
 
   const map = L.map('map', { zoomControl: true, maxZoom: 24 });
   map.setView([0, 0], 2);
@@ -46,6 +48,7 @@
     ]);
     drawSavedRoutes(routes);
     $('mission').textContent = summary.mission || '';
+    state.imageCount = summary.images_ok || 0;
     $('empty').hidden = summary.images > 0 || importState.busy;
     const c = summary.candidates || {};
     const g = summary.groups || {};
@@ -167,20 +170,72 @@
   function renderDetail() {
     const c = state.cands.find(x => x.id === state.sel);
     const el = $('detail');
-    if (!c) { el.innerHTML = '<div class="hint">Select a candidate. Keys: <b>A</b> accept, <b>W</b> follow-up waypoint, <b>R</b> reject, <b>U</b> undo, <b>N</b>/<b>P</b> next/prev, <b>F</b> full image.</div>'; return; }
+    if (!c) { el.innerHTML = '<div class="hint">Select a candidate. Keys: <b>A</b> accept, <b>W</b> follow-up waypoint, <b>R</b> reject, <b>U</b> undo, <b>N</b>/<b>P</b> next/prev, <b>V</b> switch lens, <b>F</b> full image.</div>'; return; }
     const b = c.best;
+    const view = pickView(c);                    // the lens being shown, once the lenses are known
     const temp = b.extra && b.extra.peak_temp_c != null ? ` · ${b.extra.peak_temp_c.toFixed(1)} °C` : '';
-    const strip = c.thumbs.length > 1 ? `<div class="strip">${c.thumbs.slice(1).map(t => `<img src="files/${t}">`).join('')}</div>` : '';
-    el.innerHTML = `<img src="files/${b.thumb}">${strip}
+    const shown = shownSighting(c);
+    const strip = c.thumbs.length > 1 ? `<div class="strip" title="other photos of this object; tap one to look at that shot">${c.thumbs.map((t, i) =>
+      `<img src="files/${t}" data-cand="${c.members[i]}" class="${c.members[i] === shown ? 'on' : ''}">`).join('')}</div>` : '';
+    el.innerHTML = `<div class="lens-tabs" id="lens-tabs">${lensTabs(c, view)}</div><img id="main-view" src="${view ? view.url : 'files/' + b.thumb}">${strip}
       <div class="meta"><span>${c.detectors.map(d => `<span class="badge ${d}">${d}</span>`).join(' ')} score ${c.score.toFixed(2)}${temp}</span>
       <span class="st ${c.status}">${STATUS_LABEL[c.status] || c.status}</span></div>
       <div class="meta"><span>${c.lat.toFixed(6)}, ${c.lon.toFixed(6)}</span><span>${c.area_m2 ?? '?'} m² · ${c.n_sightings} sighting${c.n_sightings > 1 ? 's' : ''} in ${c.n_frames} frame${c.n_frames > 1 ? 's' : ''}</span></div>
-      <div class="meta"><span>${baseName(b.image_path)}</span><a class="btn" href="image/${b.image_id}" target="_blank">full image</a></div>
+      <div class="meta"><span id="view-name">${view ? view.image_name : baseName(b.image_path)}</span><a class="btn" id="full-link" href="image/${view ? view.image_id : b.image_id}" target="_blank">full image</a></div>
       <div class="actions"><button class="accept">Accept (A)</button><button class="followup" title="tag for a second look on another flight">Follow-up (W)</button><button class="reject">Reject (R)</button><button class="undo">Undo (U)</button></div>`;
+    el.querySelectorAll('#lens-tabs button[data-lens]').forEach(btn => { btn.onclick = () => setLens(btn.dataset.lens); });
+    el.querySelectorAll('.strip img[data-cand]').forEach(img => { img.onclick = () => { state.shot.set(c.id, +img.dataset.cand); renderDetail(); }; });
+    loadViews(c);
     el.querySelector('.accept').onclick = () => decide('accepted');
     el.querySelector('.followup').onclick = () => decide('followup');
     el.querySelector('.reject').onclick = () => decide('rejected');
     el.querySelector('.undo').onclick = () => decide('pending');
+  }
+
+  // ---- wide / zoom / thermal views of the same moment ---------------------------
+  // An object is usually seen in several shots. One shot is shown at a time; within
+  // it the reviewer switches lens.
+  const viewStamp = c => `${c.best.id}:${state.imageCount}:${state.shot.get(c.id) || 'auto'}`;
+  function cachedViews(c) {
+    const hit = state.views.get(c.id);
+    return hit && hit.stamp === viewStamp(c) ? hit : null;
+  }
+  function shownSighting(c) {
+    const hit = cachedViews(c);
+    return hit ? hit.candidate_id : (state.shot.get(c.id) || c.best.id);
+  }
+  function pickView(c) {
+    const hit = cachedViews(c);
+    const usable = hit ? hit.views.filter(v => v.available) : [];
+    return usable.find(v => v.lens === state.lens) || usable.find(v => v.primary) || usable[0] || null;
+  }
+  function lensTabs(c, view) {
+    const hit = cachedViews(c);
+    if (!view || !hit || hit.views.length < 2) return '';
+    return hit.views.map(v => `<button data-lens="${v.lens}" class="${v === view ? 'on' : ''}" ${v.available ? '' : 'disabled'}
+      title="${v.available ? (v.primary ? 'the lens this object was found in' : 'the same moment through the ' + v.label.toLowerCase() + ' lens') : v.reason}">${v.label}${v.primary ? ' <span class="dot">●</span>' : ''}</button>`).join('');
+  }
+  async function loadViews(c) {
+    if (cachedViews(c)) return;
+    const stamp = viewStamp(c);
+    const chosen = state.shot.get(c.id);
+    const res = await fetch(`api/groups/${c.id}/views` + (chosen ? `?candidate=${chosen}` : '')).catch(() => null);
+    if (res && res.status === 404 && chosen) { state.shot.delete(c.id); if (state.sel === c.id) renderDetail(); return; }
+    const body = res && res.ok ? await res.json() : { candidate_id: c.best.id, views: [] };
+    state.views.set(c.id, { stamp, candidate_id: body.candidate_id, views: body.views });
+    if (state.sel === c.id) renderDetail();
+  }
+  function setLens(lens) {
+    state.lens = lens;
+    try { localStorage.setItem('ps-lens', lens); } catch (e) { /* storage unavailable */ }
+    renderDetail();
+  }
+  function cycleLens() {
+    const c = state.cands.find(x => x.id === state.sel);
+    const hit = c ? cachedViews(c) : null;
+    const usable = hit ? hit.views.filter(v => v.available) : [];
+    if (usable.length < 2) return;
+    setLens(usable[(usable.indexOf(pickView(c)) + 1) % usable.length].lens);
   }
 
   async function decide(status) {
@@ -218,7 +273,8 @@
     else if (k === 'u') decide('pending');
     else if (k === 'n' || k === 'j') step(1);
     else if (k === 'p' || k === 'k') step(-1);
-    else if (k === 'f' && state.sel) { const c = state.cands.find(x => x.id === state.sel); window.open(`image/${c.best.image_id}`); }
+    else if (k === 'v') cycleLens();
+    else if (k === 'f' && state.sel) { const c = state.cands.find(x => x.id === state.sel); const v = pickView(c); window.open(`image/${v ? v.image_id : c.best.image_id}`); }
   });
 
   // ---- follow-up mission -------------------------------------------------

@@ -34,8 +34,8 @@
 4. `pointersearch serve <mission>` and review on the laptop, or point another
    device on the same hotspot at `--host 0.0.0.0`.
 5. Review order: thermal first at dawn/dusk, then `rx` by score, then `bright`.
-   Keys: A accept, W follow-up, R reject, U undo, N/P next/previous, F open the
-   full frame.
+   Keys: A accept, W follow-up, R reject, U undo, N/P next/previous, V switch
+   between the wide, zoom and thermal view of the object, F open the full frame.
 6. `pointersearch export <mission> --format gpx -o team_<n>.gpx` and load onto
    the team's GPS or into the incident mapping tool. GeoJSON with `--status all`
    preserves the full review record for the debrief.

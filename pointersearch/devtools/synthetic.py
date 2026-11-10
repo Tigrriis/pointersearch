@@ -130,7 +130,7 @@ def generate_mission(out_dir: Path, lat0: float = -33.7312, lon0: float = 150.31
                      area_n_m: float = 240.0, area_e_m: float = 320.0, rel_alt: float = 80.0,
                      overlap: float = 0.3, with_thermal: bool = True, seed: int = 7,
                      rgb_size: tuple[int, int] = (1600, 1200), thermal_size: tuple[int, int] = (640, 512),
-                     ) -> dict:
+                     with_zoom: bool = False, zoom_f35: float = 70.0) -> dict:
     """Write a synthetic mission to ``out_dir``. Returns planted target positions."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -183,6 +183,13 @@ def generate_mission(out_dir: Path, lat0: float = -33.7312, lon0: float = 150.31
                 tp = out_dir / f"{stamp}_T.JPG"
                 write_jpeg_with_xmp(tp, timg, xmp, th_f35)
                 manifest["images"].append(str(tp))
+            if with_zoom:
+                zimg = render_frame(ground, res_m, origin_ne, (n, e), rel_alt, yaw, -90.0, w, h, zoom_f35, targets)
+                xmp = XMP_TEMPLATE.format(lat=lat, lon=lon, abs_alt=rel_alt + 410.0, rel_alt=rel_alt, roll=0.0,
+                                          yaw=yaw, pitch=-90.0, source="ZoomCamera")
+                zp = out_dir / f"{stamp}_Z.JPG"
+                write_jpeg_with_xmp(zp, zimg, xmp, zoom_f35)
+                manifest["images"].append(str(zp))
 
     for t in targets:
         lat, lon = frame.to_latlon(t.north, t.east)

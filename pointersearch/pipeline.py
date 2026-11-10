@@ -17,6 +17,7 @@ from .metadata import MetadataError, read_image_meta
 from .mosaic import warp_frame
 from .store import Store
 from .terrain import load_ground
+from .capture import capture_key
 
 log = logging.getLogger("pointersearch")
 IMAGE_SUFFIXES = {".jpg", ".jpeg"}
@@ -85,7 +86,7 @@ class Pipeline:
             "footprint": json.dumps(footprint) if footprint else None,
             "overlay_png": _rel(self.workdir, overlay.png_path) if overlay else None,
             "overlay_bounds": json.dumps(overlay.bounds) if overlay else None,
-            "status": "ok", "error": None,
+            "status": "ok", "error": None, "capture_key": capture_key(path) or f"single|{path}",
         }
         image_id = self.store.upsert_image(record)
 

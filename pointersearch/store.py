@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS images (
     overlay_bounds TEXT,     -- JSON [[south,west],[north,east]]
     status TEXT DEFAULT 'ok',
     error TEXT,
-    processed_at TEXT DEFAULT CURRENT_TIMESTAMP
+    processed_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    capture_key TEXT         -- shared by the wide / zoom / thermal files of one shutter press
 );
 CREATE TABLE IF NOT EXISTS candidates (
     id INTEGER PRIMARY KEY,
@@ -71,6 +72,14 @@ class Store:
             if col not in cols:
                 self.conn.execute(f"ALTER TABLE candidates ADD COLUMN {col} {typ}")
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_candidates_group ON candidates(group_id)")
+        if "capture_key" not in {r["name"] for r in self.conn.execute("PRAGMA table_info(images)")}:
+            self.conn.execute("ALTER TABLE images ADD COLUMN capture_key TEXT")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_images_capture ON images(capture_key)")
+        # missions processed before lens switching existed: derive the key from the file name
+        from .capture import capture_key
+        todo = self.conn.execute("SELECT id, path FROM images WHERE capture_key IS NULL").fetchall()
+        self.conn.executemany("UPDATE images SET capture_key=? WHERE id=?",
+                              [(capture_key(r["path"]) or f"single|{r['id']}", r["id"]) for r in todo])
         self.conn.commit()
 
     def close(self):
@@ -104,6 +113,20 @@ class Store:
                 [{"range_m": None, **c, "image_id": image_id, "bbox": json.dumps(c["bbox"]),
                   "extra": json.dumps(c.get("extra", {}))} for c in candidates],
             )
+
+    def get_image(self, image_id: int) -> dict | None:
+        r = self.conn.execute("SELECT * FROM images WHERE id=?", (image_id,)).fetchone()
+        return _image_row(r) if r else None
+
+    def siblings(self, image: dict) -> list[dict]:
+        """Every processed frame from the same shutter press, the given one included."""
+        key = image.get("capture_key")
+        if not key or key.startswith("single|"):
+            return [image]
+        rows = self.conn.execute("SELECT * FROM images WHERE capture_key=? AND status='ok' ORDER BY id",
+                                 (key,)).fetchall()
+        out = [_image_row(r) for r in rows]
+        return out if any(i["id"] == image["id"] for i in out) else [image] + out
 
     def list_images(self) -> list[dict]:
         rows = self.conn.execute("SELECT * FROM images ORDER BY captured_at, id").fetchall()

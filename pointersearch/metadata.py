@@ -125,8 +125,11 @@ def _source_from_name(path: Path, dji: dict) -> str:
 def read_image_meta(path: str | Path) -> ImageMeta:
     """Read an ImageMeta from a DJI JPEG. Raises MetadataError if ungeoreferenceable."""
     path = Path(path)
-    data = path.read_bytes()
+    with open(path, "rb") as fh:                       # the XMP packet sits near the start of the file
+        data = fh.read(2 * 1024 * 1024)
     dji = read_xmp_dji(data)
+    if not dji and path.stat().st_size > len(data):
+        dji = read_xmp_dji(path.read_bytes())
 
     with Image.open(path) as im:
         width, height = im.size

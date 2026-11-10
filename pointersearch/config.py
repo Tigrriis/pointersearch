@@ -144,6 +144,10 @@ class Config:
     thermal: ThermalConfig = field(default_factory=ThermalConfig)
     mosaic: MosaicConfig = field(default_factory=MosaicConfig)
     group_radius_m: float = 3.0          # sightings closer than this are one object
+    # Angular offset of each lens from the wide lens, degrees [right, down]. Used when
+    # showing the same object through another lens; tune if the marker sits off the object.
+    lens_align_deg: dict = field(default_factory=lambda: {"wide": [0.0, 0.0], "zoom": [0.0, 0.0],
+                                                          "thermal": [0.0, 0.0]})
     thumb_window_m: float = 4.0          # ground width of candidate thumbnails
     thumb_min_px: int = 160
     thumb_max_px: int = 512
@@ -174,6 +178,8 @@ def _merge(cfg, data: dict):
         current = getattr(cfg, key)
         if hasattr(current, "__dataclass_fields__") and isinstance(value, dict):
             _merge(current, value)
+        elif isinstance(current, dict) and isinstance(value, dict):
+            current.update(value)
         else:
             setattr(cfg, key, value)
     return cfg

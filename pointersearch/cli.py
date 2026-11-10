@@ -232,7 +232,7 @@ def cmd_demo(a):
     wd.mkdir(parents=True, exist_ok=True)
     Config().save(wd)
     img_dir = wd / "images"
-    manifest = generate_mission(img_dir, with_thermal=not a.no_thermal)
+    manifest = generate_mission(img_dir, with_thermal=not a.no_thermal, with_zoom=a.zoom)
     (wd / "manifest.json").write_text(json.dumps(manifest, indent=2))
     print(f"generated {len(manifest['images'])} synthetic images in {img_dir}")
     p = Pipeline(wd)
@@ -322,7 +322,9 @@ def main(argv=None):
     s.set_defaults(fn=cmd_stats)
 
     s = sub.add_parser("demo", help="generate and process a synthetic mission")
-    s.add_argument("workdir"); s.add_argument("--no-thermal", action="store_true"); s.set_defaults(fn=cmd_demo)
+    s.add_argument("workdir"); s.add_argument("--no-thermal", action="store_true")
+    s.add_argument("--zoom", action="store_true", help="also generate zoom-lens frames")
+    s.set_defaults(fn=cmd_demo)
 
     a = ap.parse_args(argv)
     _log(a.verbose)

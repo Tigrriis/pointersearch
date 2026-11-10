@@ -19,6 +19,7 @@ from ..ingest import IngestError, IngestJob, pick_folder
 from ..mission import MissionError, default_home, plan_mission, points_from_store
 from ..saved_routes import list_routes
 from ..store import Store
+from ..views import render_view, views_for_group
 from ..wpml import build_kmz
 from .missions import STATIC_DIR, require_local  # noqa: F401  (re-exported)
 from .planner_api import add_planner_api, route_defaults
@@ -95,6 +96,31 @@ def create_app(workdir: str | Path, tiles_dir: str | Path | None = None, mission
             raise HTTPException(404, "no such group")
         g = next((g for g in store.list_groups() if g["id"] == gid), None)
         return g or {"id": gid, "status": d.status, "updated": n}
+
+    @app.get("/api/groups/{gid}/views")
+    def group_views(gid: int, candidate: int | None = None):
+        """One shot of the object through each lens (wide / zoom / thermal), marking the
+        lenses that did not have it in frame. ``candidate`` chooses which sighting."""
+        g = next((g for g in store.list_groups() if g["id"] == gid), None)
+        if g is None:
+            raise HTTPException(404, "no such object")
+        out = views_for_group(store, cfg, g, candidate)
+        if out is None:
+            raise HTTPException(404, "that sighting does not belong to this object")
+        return out
+
+    @app.get("/api/view/{image_id}.jpg")
+    def lens_view(image_id: int, px: float, py: float, win: int = 256, bw: int = 12, bh: int = 12):
+        img = store.get_image(image_id)
+        if img is None or not Path(img["path"]).is_file():
+            raise HTTPException(404, "that photo is not available; is the card or folder still connected?")
+        if not (0 <= px < (img["width"] or 1e9) and 0 <= py < (img["height"] or 1e9)):
+            raise HTTPException(400, "point is outside the photo")
+        win, bw, bh = max(32, min(2048, win)), max(1, min(4096, bw)), max(1, min(4096, bh))
+        out = workdir / "views" / f"{image_id}_{int(px)}_{int(py)}_{win}_{bw}x{bh}.jpg"
+        if not out.is_file() and not render_view(img["path"], px, py, win, bw, bh, out):
+            raise HTTPException(500, "could not read that photo")
+        return FileResponse(out, headers={"Cache-Control": "max-age=3600"})
 
     @app.get("/api/export.{fmt}")
     def export_route(fmt: str, status: str = "accepted", by: str = "group"):

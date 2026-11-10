@@ -42,6 +42,32 @@ On the review map press *Add images…*, choose the folder that holds the photos
   photos as they land, until you press *Stop*.
 - Adding the same folder again only processes photos that are new.
 
+## Looking at an object through each lens
+
+The Matrice 4T saves a wide, a zoom and a thermal file for every shutter press.
+When you select an object on the review map, tabs above its picture switch
+between those lenses for the same moment:
+
+- **Wide / Zoom / Thermal.** The close-up is centred on the object in each lens,
+  with a box around it. The dot marks the lens the object was found in.
+- A lens is crossed out when its frame did not contain the object, which is
+  common for the zoom lens because its view is much narrower. Hover for the reason.
+- **V** steps through the available lenses. Your choice is remembered, so if you
+  prefer thermal, each object opens in thermal where it is available.
+- **F** and *full image* open the whole frame of the lens being shown.
+- An object is usually seen in several shots. The small pictures under the main
+  one are those shots; tap one to look at it, with its own lens tabs. By default
+  the shot shown is one where the most lenses had the object in frame.
+
+For this to work the wide, zoom and thermal files need to be in the same folder
+when the images are added, with their original names. Close-ups are made the
+first time you look and kept in the mission's `views` folder.
+
+If the box sits consistently to one side of the object in the thermal or zoom
+view, the lenses are not perfectly parallel. Set `lens_align_deg` in the
+mission's `pointersearch.json`, in degrees right and down, for example
+`"thermal": [0.4, -0.2]`.
+
 ## Other devices on the same network
 
 Started with `--host 0.0.0.0`, the review map and planner can be opened from a
@@ -57,4 +83,5 @@ missions/
     pointersearch.db       images, objects, review decisions
     routes/*.json          saved routes (editable)
     overlays/ thumbs/      generated imagery
+    views/                 close-ups through other lenses, made on demand
 ```

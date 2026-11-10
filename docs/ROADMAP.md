@@ -20,6 +20,9 @@
 - Planner: take-off point for route ordering and full time estimate, split a large area
   across batteries.
 - [x] Saved routes shown on the review map
+- [x] Switch each object between the wide, zoom and thermal frames of the same shutter press
+- Verify lens matching on real Matrice 4T files: file naming, zoom focal length in the
+  metadata, and the alignment offsets between lenses.
 - [x] Hosted planner with individual logins (Render blueprint); route files move between it
   and the laptop app
 - Hosted planner: private missions or per-mission permissions, password reset by email,
