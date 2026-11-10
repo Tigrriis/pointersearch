@@ -43,7 +43,7 @@ flies on a later sortie.
 Both are **metres above the take-off point**, not above the ground under the
 aircraft. If the search area is uphill of the launch site, the real clearance is
 smaller by the height difference, so raise both. The export refuses a transit
-height above `followup.max_height_m` (120 m) or an inspection height above the
+height above `flight.max_height_m` (120 m) or an inspection height above the
 transit height.
 
 Ground coverage of the wide camera over an object, for judging whether the
@@ -56,20 +56,21 @@ position error of a few metres is comfortably inside the frame:
 
 ## Settings
 
-All under `followup` in the mission's `pointersearch.json`:
+Under `followup` in the mission's `pointersearch.json`. Rows marked `flight.` sit in
+the `flight` section, which the route planner shares:
 
 | Key | Default | Meaning |
 |---|---|---|
 | `transit_height_m`, `inspect_height_m` | 90, 60 | default heights |
-| `max_height_m` | 120 | hard ceiling for the export |
 | `transit_speed_ms`, `vertical_speed_ms` | 10, 3 | speeds between and over objects |
 | `hover_s` | 3 | settle time before the photo |
 | `photo_lenses` | `wide,zoom,ir` | lenses stored at each object |
 | `gimbal_pitch_deg` | -90 | gimbal angle for the photo |
-| `finish_action` | `goHome` | what happens after the last object |
-| `rc_lost_action` | `goBack` | behaviour on loss of controller link |
 | `approach_offset_m` | 0 | see troubleshooting |
-| `max_flight_min` | 30 | warn when the estimate is longer |
+| `flight.max_height_m` | 120 | hard ceiling for the export |
+| `flight.finish_action` | `goHome` | what happens after the last object |
+| `flight.rc_lost_action` | `goBack` | behaviour on loss of controller link |
+| `flight.max_flight_min` | 30 | warn when the estimate is longer |
 
 ## Not yet verified on the aircraft
 
@@ -86,7 +87,7 @@ things could not be confirmed without a Matrice 4T and Pilot 2:
   ```
 
   It prints the codes that aircraft writes, the lens names it uses, and a
-  snippet to paste into `pointersearch.json`.
+  snippet to paste into the `flight` section of `pointersearch.json`.
 - **Stacked waypoints.** The descent is two waypoints at the same position and
   different heights. If Pilot 2 rejects the route with a "waypoints too close"
   style error, set `approach_offset_m` to 3. That moves the transit-height

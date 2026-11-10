@@ -17,9 +17,11 @@
 
 ## On task
 
-1. `pointersearch init missions/<date-location>`
-2. Fly waypoint missions in DJI Pilot 2: nadir gimbal, wide camera, timed
-   capture, thermal enabled with White Hot palette, 20-30 % side overlap.
+1. `pointersearch plan missions/<date-location>`, draw the search area or line,
+   download the KMZ and import it in DJI Pilot 2. See
+   [ROUTE_PLANNER.md](ROUTE_PLANNER.md).
+2. Fly it: nadir gimbal and even-interval photos are in the route. Set the
+   thermal palette to White Hot on the aircraft.
 3. Ingest, either:
    * **SD card per battery.** `pointersearch process <mission> <DCIM folder>`.
      A 49-minute sortie is a natural batch and this needs no network.

@@ -25,7 +25,10 @@ Use cases: missing persons (alive or deceased), lost dogs and other animals.
 6. **Review** on a local Leaflet map: thumbnails, accept/reject with keyboard,
    filters per detector, live refresh while the aircraft is still flying.
 7. **Export** accepted objects as GPX, KML or GeoJSON for ground teams.
-8. **Follow-up missions**: tag objects for a second look and export a waypoint
+8. **Plan search routes**: draw a line or a search area on the map and export a
+   route for DJI Pilot 2 that takes photos at an even spacing
+   (see [docs/ROUTE_PLANNER.md](docs/ROUTE_PLANNER.md)).
+9. **Follow-up missions**: tag objects for a second look and export a waypoint
    route for DJI Pilot 2 that revisits each one at a lower height
    (see [docs/FOLLOWUP_MISSIONS.md](docs/FOLLOWUP_MISSIONS.md)).
 
@@ -68,8 +71,10 @@ Then open http://127.0.0.1:8008/ in a browser.
 
 ## Field workflow
 
+Plan the search route, download the KMZ and import it in DJI Pilot 2:
+
 ```bash
-pointersearch init missions/2025-06-01-grose-valley
+pointersearch plan missions/2025-06-01-grose-valley
 ```
 
 After each battery, pull the SD card and run:

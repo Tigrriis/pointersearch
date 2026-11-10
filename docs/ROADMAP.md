@@ -12,7 +12,11 @@
   local hotspot. Live telemetry gives the aircraft track on the review map.
 - [x] Candidate de-duplication across overlapping frames (grouped within `group_radius_m`)
 - [x] Follow-up tag and DJI Pilot 2 waypoint mission export (transit / inspection heights)
-- Verify the exported route on a Matrice 4T: aircraft codes, stacked waypoints, lens names.
+- [x] Route planner: draw a line or search area, even-interval photos, KMZ export
+- Verify exported routes on a Matrice 4T: aircraft codes, stacked waypoints, lens names,
+  even-distance photo trigger.
+- Planner: take-off point for route ordering and full time estimate, save/load named routes,
+  split a large area across batteries.
 - Terrain-aware follow-up heights from a DEM.
 - Aircraft track and searched-area coverage layer from frame footprints.
 
