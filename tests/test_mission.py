@@ -5,9 +5,9 @@ from xml.etree import ElementTree as ET
 import pytest
 from fastapi.testclient import TestClient
 
-from pointersearch.config import Config, FollowupConfig
-from pointersearch.mission import (KML_NS, MissionError, MissionPoint, build_kmz, order_points, plan_mission,
-                                   points_from_store, wpml_info)
+from pointersearch.config import Config, FlightConfig, FollowupConfig
+from pointersearch.mission import MissionError, MissionPoint, order_points, plan_mission, points_from_store
+from pointersearch.wpml import KML_NS, build_kmz, wpml_info
 from pointersearch.pipeline import Pipeline
 from pointersearch.review.server import create_app
 
@@ -42,20 +42,21 @@ def test_default_heights_and_three_waypoints_per_object():
 
 def test_height_overrides_and_limits():
     cfg = FollowupConfig()
-    plan = plan_mission(PTS, cfg, 120, 90, HOME)
+    plan = plan_mission(PTS, cfg, None, 120, 90, HOME)
     assert {w.height_m for w in plan.waypoints} == {120.0, 90.0}
     with pytest.raises(MissionError, match="ceiling"):
-        plan_mission(PTS, cfg, 121, 90, HOME)
+        plan_mission(PTS, cfg, None, 121, 90, HOME)
     with pytest.raises(MissionError, match="above transit"):
-        plan_mission(PTS, cfg, 60, 90, HOME)
+        plan_mission(PTS, cfg, None, 60, 90, HOME)
     with pytest.raises(MissionError, match="positive"):
-        plan_mission(PTS, cfg, 90, 0, HOME)
+        plan_mission(PTS, cfg, None, 90, 0, HOME)
+    assert plan_mission(PTS, cfg, FlightConfig(max_height_m=150), 140, 90, HOME).transit_height_m == 140
     with pytest.raises(MissionError, match="no objects"):
         plan_mission([], cfg, home=HOME)
 
 
 def test_equal_heights_give_one_waypoint_per_object():
-    plan = plan_mission(PTS, FollowupConfig(), 60, 60, HOME)
+    plan = plan_mission(PTS, FollowupConfig(), None, 60, 60, HOME)
     assert len(plan.waypoints) == 3 and all(w.inspect for w in plan.waypoints)
 
 
@@ -81,9 +82,9 @@ def test_route_order_is_shorter_than_input_order():
 
 
 def test_kmz_structure_and_contents():
-    cfg = FollowupConfig()
-    plan = plan_mission(PTS, cfg, home=HOME)
-    kmz = build_kmz(plan, cfg)
+    cfg = FlightConfig()
+    plan = plan_mission(PTS, FollowupConfig(), cfg, home=HOME)
+    kmz = build_kmz(plan.wpml, cfg)
     with zipfile.ZipFile(io.BytesIO(kmz)) as z:
         assert sorted(z.namelist()) == ["wpmz/template.kml", "wpmz/waylines.wpml"]
     w = _wpml(cfg)
@@ -127,9 +128,9 @@ def test_kmz_structure_and_contents():
 
 
 def test_wpml_info_round_trip(tmp_path):
-    cfg = FollowupConfig(drone_enum=77, drone_sub_enum=1, payload_enum=67, wpml_version="1.0.2")
+    cfg = FlightConfig(drone_enum=77, drone_sub_enum=1, payload_enum=67, wpml_version="1.0.2")
     f = tmp_path / "route.kmz"
-    f.write_bytes(build_kmz(plan_mission(PTS, cfg, home=HOME), cfg))
+    f.write_bytes(build_kmz(plan_mission(PTS, FollowupConfig(), cfg, home=HOME).wpml, cfg))
     info = wpml_info(f)
     assert (info["drone_enum"], info["drone_sub_enum"], info["payload_enum"]) == (77, 1, 67)
     assert info["wpml_version"] == "1.0.2" and info["height_mode"] == "relativeToStartPoint"
@@ -169,7 +170,7 @@ def test_followup_status_and_mission_api(mission):
     r = client.get("/api/mission.kmz", params={"transit": 120, "inspect": 90})
     assert r.status_code == 200 and "followup_2pts_120-90m.kmz" in r.headers["content-disposition"]
     way = _parse(r.content, "wpmz/waylines.wpml")
-    w = _wpml(FollowupConfig())
+    w = _wpml(FlightConfig())
     assert [e.text for e in way.iter(f"{{{w}}}executeHeight")] == ["120", "90", "120"] * 2
 
     # follow-ups export as waypoints for a map too, and are not in the accepted export

@@ -15,8 +15,10 @@ from pydantic import BaseModel
 
 from ..config import Config
 from ..export import FORMATS, export
-from ..mission import MissionError, build_kmz, default_home, plan_mission, points_from_store
+from ..mission import MissionError, default_home, plan_mission, points_from_store
+from ..route import RouteError, plan_route
 from ..store import Store
+from ..wpml import build_kmz
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -24,6 +26,21 @@ STATIC_DIR = Path(__file__).parent / "static"
 class Decision(BaseModel):
     status: str
     note: str | None = None
+
+
+class RouteRequest(BaseModel):
+    mode: str = "line"                      # line | area
+    points: list[list[float]]               # [[lat, lon], ...]
+    name: str = "search"
+    height_m: float | None = None
+    speed_ms: float | None = None
+    lens: str | None = None                 # coverage lens: wide | thermal
+    front_overlap: float | None = None      # 0..1
+    side_overlap: float | None = None       # 0..1
+    angle_deg: float | None = None          # sweep direction; None = along the longest edge
+    interval_m: float | None = None         # override: photo every N metres
+    interval_s: float | None = None         # override: photo every N seconds
+    photo_lenses: str | None = None         # e.g. "wide,ir"
 
 
 def create_app(workdir: str | Path, tiles_dir: str | Path | None = None, mission_name: str | None = None) -> FastAPI:
@@ -44,7 +61,11 @@ def create_app(workdir: str | Path, tiles_dir: str | Path | None = None, mission
         s["mission"] = mission_name or workdir.name
         s["followup"] = {"transit_height_m": cfg.followup.transit_height_m,
                          "inspect_height_m": cfg.followup.inspect_height_m,
-                         "max_height_m": cfg.followup.max_height_m}
+                         "max_height_m": cfg.flight.max_height_m}
+        s["route"] = {"height_m": cfg.route.height_m, "speed_ms": cfg.route.speed_ms,
+                      "coverage_lens": cfg.route.coverage_lens, "front_overlap": cfg.route.front_overlap,
+                      "side_overlap": cfg.route.side_overlap, "photo_lenses": cfg.route.photo_lenses,
+                      "max_height_m": cfg.flight.max_height_m}
         s["tiles"] = tiles_dir is not None
         return s
 
@@ -104,7 +125,8 @@ def create_app(workdir: str | Path, tiles_dir: str | Path | None = None, mission
         else:
             home_ll = default_home(store)
         try:
-            return plan_mission(points_from_store(store, status), cfg.followup, transit, inspect, home_ll)
+            return plan_mission(points_from_store(store, status), cfg.followup, cfg.flight,
+                                transit, inspect, home_ll)
         except MissionError as exc:
             raise HTTPException(400, str(exc))
 
@@ -115,7 +137,7 @@ def create_app(workdir: str | Path, tiles_dir: str | Path | None = None, mission
         d = _plan(transit, inspect, status, home).summary()
         d["defaults"] = {"transit_height_m": cfg.followup.transit_height_m,
                          "inspect_height_m": cfg.followup.inspect_height_m,
-                         "max_height_m": cfg.followup.max_height_m}
+                         "max_height_m": cfg.flight.max_height_m}
         return d
 
     @app.get("/api/mission.kmz")
@@ -123,8 +145,37 @@ def create_app(workdir: str | Path, tiles_dir: str | Path | None = None, mission
                     status: str = "followup", home: str | None = None):
         plan = _plan(transit, inspect, status, home)
         name = f"followup_{len(plan.points)}pts_{plan.transit_height_m:g}-{plan.inspect_height_m:g}m.kmz"
-        return Response(build_kmz(plan, cfg.followup), media_type="application/vnd.google-earth.kmz",
+        return Response(build_kmz(plan.wpml, cfg.flight), media_type="application/vnd.google-earth.kmz",
                         headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+    # ---- search route planner -------------------------------------------
+    @app.get("/plan")
+    def plan_page():
+        return FileResponse(STATIC_DIR / "plan.html")
+
+    def _route(req: RouteRequest):
+        try:
+            return plan_route(
+                req.mode, [(p[0], p[1]) for p in req.points if len(p) >= 2], cfg.route, cfg.flight, cfg.camera,
+                height_m=req.height_m, speed_ms=req.speed_ms, lens=req.lens,
+                front_overlap=req.front_overlap, side_overlap=req.side_overlap, angle_deg=req.angle_deg,
+                interval_m=req.interval_m, interval_s=req.interval_s, photo_lenses=req.photo_lenses,
+                name=req.name)
+        except RouteError as exc:
+            raise HTTPException(400, str(exc))
+
+    @app.post("/api/route/plan")
+    def route_plan(req: RouteRequest):
+        """Waypoints, photo positions, spacing, time estimate and warnings for a drawing."""
+        return _route(req).summary()
+
+    @app.post("/api/route/kmz")
+    def route_kmz(req: RouteRequest):
+        plan = _route(req)
+        safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in req.name.strip())[:40] or "search"
+        fname = f"{safe}_{plan.mode}_{plan.height_m:g}m.kmz"
+        return Response(build_kmz(plan.wpml, cfg.flight), media_type="application/vnd.google-earth.kmz",
+                        headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
     @app.get("/files/{rel_path:path}")
     def files(rel_path: str):

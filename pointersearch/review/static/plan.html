@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pointersearch route planner</title>
+<link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="plan">
+<header>
+  <div class="brand">pointersearch <span>route planner</span></div>
+  <div class="stats" id="hint">Click the map to add points. Drag a point to move it. Right-click a point to delete it.</div>
+  <div class="controls">
+    <input type="text" id="goto" placeholder="lat, lon" title="jump to a coordinate, e.g. -41.5634, 146.9991">
+    <button class="btn" id="goto-btn">Go</button>
+    <button class="btn" id="fit-btn" title="zoom to the drawing">Fit drawing</button>
+    <a class="btn" href="/">Review map</a>
+  </div>
+</header>
+<main>
+  <div id="map"></div>
+  <aside class="planner">
+    <div class="seg" role="tablist">
+      <button id="mode-line" class="on" title="follow a line: a track, creek or ridgeline">Line route</button>
+      <button id="mode-area" title="sweep back and forth across an area">Search area</button>
+    </div>
+
+    <div class="form">
+      <label class="full">Route name <input type="text" id="p-name" value="search" maxlength="40"></label>
+      <label>Height <span class="unit"><input type="number" id="p-height" min="10" step="5"> m</span></label>
+      <label>Speed <span class="unit"><input type="number" id="p-speed" min="1" max="15" step="1"> m/s</span></label>
+      <label class="full">Space photos for
+        <select id="p-lens">
+          <option value="wide">wide camera (colour)</option>
+          <option value="thermal">thermal camera (narrower)</option>
+        </select>
+      </label>
+      <label>Photo overlap <span class="unit"><input type="number" id="p-front" min="0" max="90" step="5"> %</span></label>
+      <label class="area-only">Line overlap <span class="unit"><input type="number" id="p-side" min="0" max="90" step="5"> %</span></label>
+      <label class="full">Photo interval
+        <span class="unit">
+          <select id="p-imode">
+            <option value="auto">from overlap</option>
+            <option value="m">every … metres</option>
+            <option value="s">every … seconds</option>
+          </select>
+          <input type="number" id="p-ival" min="1" step="1" disabled>
+        </span>
+      </label>
+      <label class="full area-only">Sweep direction
+        <span class="unit">
+          <select id="p-amode"><option value="auto">along longest side</option><option value="set">bearing…</option></select>
+          <input type="number" id="p-angle" min="0" max="179" step="5" value="0" disabled> °
+        </span>
+      </label>
+      <div class="full lenses">Store photos from
+        <label><input type="checkbox" id="l-wide"> wide</label>
+        <label><input type="checkbox" id="l-zoom"> zoom</label>
+        <label><input type="checkbox" id="l-ir"> thermal</label>
+      </div>
+    </div>
+
+    <div id="result" class="result"><div class="hint">Draw at least two points for a line, or three corners for an area.</div></div>
+
+    <div class="actions">
+      <button class="btn" id="undo-btn" title="Ctrl+Z">Undo point</button>
+      <button class="btn" id="clear-btn">Clear</button>
+      <button class="btn primary disabled" id="dl-btn">Download KMZ</button>
+    </div>
+  </aside>
+</main>
+<script src="/static/vendor/leaflet/leaflet.js"></script>
+<script src="/static/plan.js"></script>
+</body>
+</html>

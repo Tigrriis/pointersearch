@@ -82,26 +82,13 @@ class MosaicConfig:
 
 
 @dataclass
-class FollowupConfig:
-    """Follow-up waypoint mission exported for DJI Pilot 2 (WPML KMZ).
+class FlightConfig:
+    """Settings shared by every waypoint file written for DJI Pilot 2."""
 
-    Heights are metres relative to the take-off point, not above the ground under
-    the aircraft. On sloping terrain raise both (up to ``max_height_m``).
-    """
-
-    transit_height_m: float = 90.0      # height flown between objects
-    inspect_height_m: float = 60.0      # height held over each object for photos
-    max_height_m: float = 120.0         # hard ceiling; export refuses anything above
-    transit_speed_ms: float = 10.0
-    vertical_speed_ms: float = 3.0      # speed on the descend / climb legs over an object
-    hover_s: float = 3.0                # settle time before the photo
-    gimbal_pitch_deg: float = -90.0
-    photo_lenses: str = "wide,zoom,ir"  # lenses stored at each object
+    max_height_m: float = 120.0         # hard ceiling; exports refuse anything above
+    max_flight_min: float = 30.0        # warn when a time estimate exceeds this
     finish_action: str = "goHome"       # goHome | noAction | autoLand | gotoFirstWaypoint
     rc_lost_action: str = "goBack"      # goBack | landing | hover | goContinue
-    approach_offset_m: float = 0.0      # >0 shifts the transit-height waypoints back along
-                                        # the inbound leg, if Pilot 2 rejects stacked points
-    max_flight_min: float = 30.0        # warn when the estimate exceeds this
     # Aircraft / payload codes written into the file. The Matrice 4T values below are
     # the ones community tools use; DJI's public table predates the aircraft. Confirm
     # with `pointersearch wpml-info <route exported from Pilot 2>.kmz`.
@@ -114,9 +101,44 @@ class FollowupConfig:
 
 
 @dataclass
+class FollowupConfig:
+    """Follow-up waypoint mission over objects tagged in the review map.
+
+    Heights are metres relative to the take-off point, not above the ground under
+    the aircraft. On sloping terrain raise both (up to ``flight.max_height_m``).
+    """
+
+    transit_height_m: float = 90.0      # height flown between objects
+    inspect_height_m: float = 60.0      # height held over each object for photos
+    transit_speed_ms: float = 10.0
+    vertical_speed_ms: float = 3.0      # speed on the descend / climb legs over an object
+    hover_s: float = 3.0                # settle time before the photo
+    gimbal_pitch_deg: float = -90.0
+    photo_lenses: str = "wide,zoom,ir"  # lenses stored at each object
+    approach_offset_m: float = 0.0      # >0 shifts the transit-height waypoints back along
+                                        # the inbound leg, if Pilot 2 rejects stacked points
+
+
+@dataclass
+class RouteConfig:
+    """Defaults for search routes drawn in the planner (line or area sweep)."""
+
+    height_m: float = 90.0              # metres above the take-off point
+    speed_ms: float = 8.0
+    coverage_lens: str = "wide"         # lens whose footprint sets spacing: wide | thermal
+    front_overlap: float = 0.25         # between consecutive photos along the route
+    side_overlap: float = 0.25          # between neighbouring sweep lines (area mode)
+    photo_lenses: str = "wide,ir"       # lenses stored at each photo
+    gimbal_pitch_deg: float = -90.0
+    min_photo_interval_s: float = 2.0   # assumed fastest reliable multi-lens capture; warn below
+
+
+@dataclass
 class Config:
     camera: CameraDefaults = field(default_factory=CameraDefaults)
+    flight: FlightConfig = field(default_factory=FlightConfig)
     followup: FollowupConfig = field(default_factory=FollowupConfig)
+    route: RouteConfig = field(default_factory=RouteConfig)
     rx: RXConfig = field(default_factory=RXConfig)
     bright: BrightColourConfig = field(default_factory=BrightColourConfig)
     thermal: ThermalConfig = field(default_factory=ThermalConfig)

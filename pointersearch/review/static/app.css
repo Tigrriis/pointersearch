@@ -54,3 +54,38 @@ dialog .summary ol { margin:6px 0 0; padding-left:22px; max-height:150px; overfl
 .detail .actions button { padding:8px 2px; font-size:13px; white-space:nowrap; }
 .detail { flex:0 0 auto; }
 .detail > img { max-height:38vh; object-fit:contain; }
+
+/* ---- route planner ---- */
+header input[type=text] { background:#12161a; color:var(--text); border:1px solid #3a444e; border-radius:4px; padding:4px 8px; font:inherit; width:11em; }
+.planner { overflow:auto; padding:12px; gap:12px; }
+.seg { display:flex; border:1px solid #3a444e; border-radius:6px; overflow:hidden; flex:0 0 auto; }
+.seg button { flex:1; padding:8px; border:0; background:#2b333b; color:var(--muted); font:inherit; font-weight:600; cursor:pointer; }
+.seg button.on { background:var(--follow); color:#06222e; }
+.form { display:grid; grid-template-columns:1fr 1fr; gap:10px 12px; flex:0 0 auto; }
+.form label, .form .lenses { display:flex; flex-direction:column; gap:4px; color:var(--muted); font-size:13px; }
+.form .full { grid-column:1 / -1; }
+.form .lenses { flex-direction:row; gap:14px; align-items:center; flex-wrap:wrap; }
+.form .lenses label { flex-direction:row; align-items:center; gap:5px; color:var(--text); cursor:pointer; }
+.form input[type=number], .form input[type=text], .form select {
+  background:#12161a; color:var(--text); border:1px solid #3a444e; border-radius:4px; padding:5px 6px; font:inherit; min-width:0; }
+.form input[type=number] { width:5em; }
+.form input:disabled { opacity:.35; }
+.form .unit { display:flex; gap:6px; align-items:center; color:var(--text); }
+.form .unit select { flex:1; }
+.planner.line .area-only { display:none; }
+.result { font-size:13px; line-height:1.55; flex:0 0 auto; }
+.result table { width:100%; border-collapse:collapse; }
+.result td { padding:2px 0; vertical-align:top; }
+.result td:first-child { color:var(--muted); width:46%; }
+.result td:last-child { font-variant-numeric:tabular-nums; }
+.result .big { font-size:15px; font-weight:600; margin-bottom:6px; }
+.result .warn { color:var(--accent); margin-top:6px; }
+.result .note { color:var(--muted); margin-top:6px; }
+.result .err { color:#ff8a80; }
+.planner .actions { display:flex; gap:8px; flex:0 0 auto; position:sticky; bottom:-12px; margin-top:auto;
+  background:var(--panel); padding:10px 0 12px; border-top:1px solid #0b0e11; }
+.planner .actions .btn { flex:1; text-align:center; padding:8px 6px; }
+.vtx { background:#fff; color:#111; border:2px solid #06222e; border-radius:50%; width:20px; height:20px; line-height:17px;
+  text-align:center; font-size:11px; font-weight:700; box-shadow:0 1px 3px rgba(0,0,0,.6); cursor:grab; box-sizing:border-box; }
+.endcap { background:#06222e; color:#fff; border-radius:4px; padding:1px 5px; font-size:11px; font-weight:700; white-space:nowrap; }
+body.plan #map { cursor:crosshair; }

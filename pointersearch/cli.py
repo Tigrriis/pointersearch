@@ -6,6 +6,7 @@
     pointersearch serve   missions/2025-06-01-blue-mtns --tiles ~/tiles/bluemtns
     pointersearch export  missions/2025-06-01-blue-mtns --format gpx --status accepted
     pointersearch mission missions/2025-06-01-blue-mtns --transit 90 --inspect 60
+    pointersearch plan    missions/2025-06-01-blue-mtns
     pointersearch merge   missions/2025-06-01-blue-mtns
     pointersearch demo    demo
 """
@@ -58,8 +59,21 @@ def cmd_watch(a):
 
 def cmd_serve(a):
     from .review.server import serve
-    print(f"review UI: http://{a.host}:{a.port}/   (Ctrl-C to stop)")
+    print(f"review map:    http://{a.host}:{a.port}/")
+    print(f"route planner: http://{a.host}:{a.port}/plan   (Ctrl-C to stop)")
     serve(a.workdir, host=a.host, port=a.port, tiles_dir=a.tiles, mission_name=a.name)
+
+
+def cmd_plan(a):
+    """Open the route planner. Works before any imagery exists."""
+    from .review.server import serve
+    wd = Path(a.workdir)
+    if not (wd / Config.FILENAME).exists():
+        wd.mkdir(parents=True, exist_ok=True)
+        Config().save(wd)
+        print(f"created {wd}")
+    print(f"route planner: http://{a.host}:{a.port}/plan   (Ctrl-C to stop)")
+    serve(wd, host=a.host, port=a.port, tiles_dir=a.tiles, mission_name=a.name)
 
 
 def cmd_export(a):
@@ -74,8 +88,9 @@ def cmd_export(a):
 
 
 def cmd_mission(a):
-    from .mission import MissionError, build_kmz, default_home, plan_mission, points_from_store
+    from .mission import MissionError, default_home, plan_mission, points_from_store
     from .store import Store
+    from .wpml import build_kmz
     wd = Path(a.workdir)
     cfg = Config.load(wd)
     st = Store(wd)
@@ -87,11 +102,11 @@ def cmd_mission(a):
     else:
         home = default_home(st)
     try:
-        plan = plan_mission(points_from_store(st, a.status), cfg.followup, a.transit, a.inspect, home)
+        plan = plan_mission(points_from_store(st, a.status), cfg.followup, cfg.flight, a.transit, a.inspect, home)
     except MissionError as exc:
         sys.exit(f"cannot build mission: {exc}")
     out = Path(a.output or wd / "followup.kmz")
-    out.write_bytes(build_kmz(plan, cfg.followup))
+    out.write_bytes(build_kmz(plan.wpml, cfg.flight))
     s = plan.summary()
     print(f"wrote {out}")
     print(f"  {s['objects']} object(s), {s['waypoints']} waypoints, transit {s['transit_height_m']:g} m / "
@@ -105,15 +120,15 @@ def cmd_mission(a):
 
 
 def cmd_wpml_info(a):
-    from .mission import MissionError, wpml_info
+    from .wpml import WpmlError, wpml_info
     try:
         info = wpml_info(a.kmz)
-    except (MissionError, OSError) as exc:
+    except (WpmlError, OSError) as exc:
         sys.exit(f"cannot read {a.kmz}: {exc}")
     print(json.dumps(info, indent=2))
     keys = ("drone_enum", "drone_sub_enum", "payload_enum", "payload_sub_enum", "payload_position", "wpml_version")
     print("\npaste into pointersearch.json to match this aircraft:")
-    print(json.dumps({"followup": {k: info[k] for k in keys if info.get(k) is not None}}, indent=2))
+    print(json.dumps({"flight": {k: info[k] for k in keys if info.get(k) is not None}}, indent=2))
 
 
 def cmd_merge(a):
@@ -242,6 +257,12 @@ def main(argv=None):
     s.add_argument("--tiles", help="folder of XYZ base-map tiles ({z}/{x}/{y}.png) for offline use")
     s.add_argument("--name", help="mission name shown in the UI")
     s.set_defaults(fn=cmd_serve)
+
+    s = sub.add_parser("plan", help="open the route planner (draw a line or area, download a KMZ)")
+    s.add_argument("workdir", nargs="?", default="missions/planning")
+    s.add_argument("--host", default="127.0.0.1"); s.add_argument("--port", type=int, default=8008)
+    s.add_argument("--tiles", help="folder of XYZ base-map tiles for offline use")
+    s.add_argument("--name"); s.set_defaults(fn=cmd_plan)
 
     s = sub.add_parser("export", help="export candidates as GPX/KML/GeoJSON")
     s.add_argument("workdir"); s.add_argument("--format", choices=["gpx", "kml", "geojson"], default="gpx")

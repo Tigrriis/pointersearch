@@ -4,29 +4,20 @@ Objects tagged *follow-up* in the review map become a route the aircraft can fly
 climb to transit height, fly to each object, descend to inspection height, point
 the gimbal down, take stills on the chosen lenses, climb back, move on.
 
-A KMZ holds two files that describe the same route:
-
-* ``wpmz/template.kml``  - what Pilot 2 shows and lets the pilot edit
-* ``wpmz/waylines.wpml`` - what the aircraft executes
-
-Heights are relative to the take-off point. The aircraft/payload codes written
-into the file come from :class:`pointersearch.config.FollowupConfig`; always
-open an exported route in Pilot 2 and check it on the map before flying it.
+Heights are relative to the take-off point. The file itself is written by
+:mod:`pointersearch.wpml`; always open an exported route in Pilot 2 and check it
+on the map before flying it.
 """
 
 from __future__ import annotations
 
-import io
 import math
-import time
-import zipfile
 from dataclasses import dataclass, field
-from xml.etree import ElementTree as ET
 
-from .config import FollowupConfig
+from .config import FlightConfig, FollowupConfig
 from .georef import LocalFrame
+from .wpml import ActionGroup, WpmlRoute, WpmlWaypoint, gimbal_rotate, hover, take_photo
 
-KML_NS = "http://www.opengis.net/kml/2.2"
 MIN_STACK_SEPARATION_M = 1.0   # below this, transit and inspection are treated as one height
 PHOTO_OVERHEAD_S = 6.0         # gimbal move + capture + write, per object
 
@@ -63,6 +54,7 @@ class MissionPlan:
     duration_s: float
     home: tuple[float, float] | None
     warnings: list[str] = field(default_factory=list)
+    wpml: WpmlRoute | None = None
 
     def summary(self) -> dict:
         return {
@@ -123,9 +115,10 @@ def order_points(points: list[MissionPoint], home: tuple[float, float] | None) -
 # ---------------------------------------------------------------------------
 # Planning
 # ---------------------------------------------------------------------------
-def plan_mission(points: list[MissionPoint], cfg: FollowupConfig,
+def plan_mission(points: list[MissionPoint], cfg: FollowupConfig, flight: FlightConfig | None = None,
                  transit_height_m: float | None = None, inspect_height_m: float | None = None,
                  home: tuple[float, float] | None = None) -> MissionPlan:
+    flight = flight or FlightConfig()
     transit = cfg.transit_height_m if transit_height_m is None else float(transit_height_m)
     inspect = cfg.inspect_height_m if inspect_height_m is None else float(inspect_height_m)
     if not points:
@@ -134,9 +127,9 @@ def plan_mission(points: list[MissionPoint], cfg: FollowupConfig,
         raise MissionError("heights must be positive")
     if inspect > transit:
         raise MissionError(f"inspection height ({inspect:g} m) cannot be above transit height ({transit:g} m)")
-    if transit > cfg.max_height_m:
-        raise MissionError(f"transit height ({transit:g} m) exceeds the {cfg.max_height_m:g} m ceiling "
-                           "(followup.max_height_m)")
+    if transit > flight.max_height_m:
+        raise MissionError(f"transit height ({transit:g} m) exceeds the {flight.max_height_m:g} m ceiling "
+                           "(flight.max_height_m)")
 
     ordered = order_points(points, home)
     stacked = (transit - inspect) >= MIN_STACK_SEPARATION_M
@@ -168,15 +161,27 @@ def plan_mission(points: list[MissionPoint], cfg: FollowupConfig,
     distance = horiz + len(ordered) * vert_per_obj
 
     warnings = []
-    if duration / 60.0 > cfg.max_flight_min:
-        warnings.append(f"estimated {duration / 60:.0f} min exceeds the {cfg.max_flight_min:g} min budget; "
+    if duration / 60.0 > flight.max_flight_min:
+        warnings.append(f"estimated {duration / 60:.0f} min exceeds the {flight.max_flight_min:g} min budget; "
                         "split the follow-ups across two flights")
     if home is None:
         warnings.append("no home position given; route order starts at the first object and the "
                         "time estimate excludes the flight out and back")
     warnings.append("heights are relative to the take-off point, not the ground under the aircraft; "
                     "check terrain and obstacles along the route before flying")
-    return MissionPlan(ordered, wps, transit, inspect, distance, duration, home, warnings)
+    wpml_wps = []
+    for i, w in enumerate(wps):
+        groups = []
+        if w.inspect:
+            actions = [gimbal_rotate(cfg.gimbal_pitch_deg, flight.payload_position)]
+            if cfg.hover_s > 0:
+                actions.append(hover(cfg.hover_s))
+            actions.append(take_photo(cfg.photo_lenses, f"PS{w.object_id}", flight.payload_position))
+            groups.append(ActionGroup(actions, "reachPoint", None, i, i))
+        wpml_wps.append(WpmlWaypoint(w.lat, w.lon, w.height_m, w.speed_ms, groups))
+    wpml = WpmlRoute(wpml_wps, transit, cfg.transit_speed_ms, distance, duration,
+                     cfg.photo_lenses, cfg.gimbal_pitch_deg)
+    return MissionPlan(ordered, wps, transit, inspect, distance, duration, home, warnings, wpml)
 
 
 def _offset_towards(p: tuple[float, float], towards: tuple[float, float], dist_m: float) -> tuple[float, float]:
@@ -187,209 +192,6 @@ def _offset_towards(p: tuple[float, float], towards: tuple[float, float], dist_m
         return p
     k = min(dist_m, length / 2) / length
     return frame.to_latlon(n * k, e * k)
-
-
-# ---------------------------------------------------------------------------
-# WPML writing
-# ---------------------------------------------------------------------------
-class _X:
-    """Tiny helper so element construction reads like the XML it produces."""
-
-    def __init__(self, wpml_ns: str):
-        self.wpml_ns = wpml_ns
-
-    def w(self, parent, tag, text=None):
-        el = ET.SubElement(parent, f"{{{self.wpml_ns}}}{tag}")
-        if text is not None:
-            el.text = _fmt(text)
-        return el
-
-    def k(self, parent, tag, text=None):
-        el = ET.SubElement(parent, f"{{{KML_NS}}}{tag}")
-        if text is not None:
-            el.text = _fmt(text)
-        return el
-
-
-def _fmt(v) -> str:
-    if isinstance(v, bool):
-        return "1" if v else "0"
-    if isinstance(v, float):
-        return f"{v:.3f}".rstrip("0").rstrip(".") if abs(v) < 1e6 else f"{v:.0f}"
-    return str(v)
-
-
-def _mission_config(x: _X, doc, cfg: FollowupConfig, transit: float):
-    mc = x.w(doc, "missionConfig")
-    x.w(mc, "flyToWaylineMode", "safely")
-    x.w(mc, "finishAction", cfg.finish_action)
-    if cfg.rc_lost_action == "goContinue":
-        x.w(mc, "exitOnRCLost", "goContinue")
-    else:
-        x.w(mc, "exitOnRCLost", "executeLostAction")
-        x.w(mc, "executeRCLostAction", cfg.rc_lost_action)
-    # Climb straight up to transit height before moving off, and return at that height.
-    x.w(mc, "takeOffSecurityHeight", transit)
-    x.w(mc, "globalTransitionalSpeed", cfg.transit_speed_ms)
-    x.w(mc, "globalRTHHeight", transit)
-    di = x.w(mc, "droneInfo")
-    x.w(di, "droneEnumValue", cfg.drone_enum)
-    x.w(di, "droneSubEnumValue", cfg.drone_sub_enum)
-    pi = x.w(mc, "payloadInfo")
-    x.w(pi, "payloadEnumValue", cfg.payload_enum)
-    x.w(pi, "payloadSubEnumValue", cfg.payload_sub_enum)
-    x.w(pi, "payloadPositionIndex", cfg.payload_position)
-
-
-def _heading_param(x: _X, parent, tag="waypointHeadingParam"):
-    hp = x.w(parent, tag)
-    x.w(hp, "waypointHeadingMode", "followWayline")
-    x.w(hp, "waypointHeadingAngle", 0)
-    x.w(hp, "waypointPoiPoint", "0.000000,0.000000,0.000000")
-    x.w(hp, "waypointHeadingAngleEnable", 0)
-    x.w(hp, "waypointHeadingPathMode", "followBadArc")
-
-
-def _action_group(x: _X, placemark, index: int, group_id: int, wp: Waypoint, cfg: FollowupConfig):
-    ag = x.w(placemark, "actionGroup")
-    x.w(ag, "actionGroupId", group_id)
-    x.w(ag, "actionGroupStartIndex", index)
-    x.w(ag, "actionGroupEndIndex", index)
-    x.w(ag, "actionGroupMode", "sequence")
-    trig = x.w(ag, "actionTrigger")
-    x.w(trig, "actionTriggerType", "reachPoint")
-    aid = 0
-
-    def action(func):
-        nonlocal aid
-        a = x.w(ag, "action")
-        x.w(a, "actionId", aid)
-        aid += 1
-        x.w(a, "actionActuatorFunc", func)
-        return x.w(a, "actionActuatorFuncParam")
-
-    g = action("gimbalRotate")
-    x.w(g, "gimbalHeadingYawBase", "north")
-    x.w(g, "gimbalRotateMode", "absoluteAngle")
-    x.w(g, "gimbalPitchRotateEnable", 1)
-    x.w(g, "gimbalPitchRotateAngle", cfg.gimbal_pitch_deg)
-    x.w(g, "gimbalRollRotateEnable", 0)
-    x.w(g, "gimbalRollRotateAngle", 0)
-    x.w(g, "gimbalYawRotateEnable", 0)
-    x.w(g, "gimbalYawRotateAngle", 0)
-    x.w(g, "gimbalRotateTimeEnable", 0)
-    x.w(g, "gimbalRotateTime", 0)
-    x.w(g, "payloadPositionIndex", cfg.payload_position)
-    if cfg.hover_s > 0:
-        h = action("hover")
-        x.w(h, "hoverTime", cfg.hover_s)
-    t = action("takePhoto")
-    x.w(t, "payloadPositionIndex", cfg.payload_position)
-    x.w(t, "fileSuffix", f"PS{wp.object_id}")
-    x.w(t, "payloadLensIndex", cfg.photo_lenses)
-    x.w(t, "useGlobalPayloadLensIndex", 0)
-
-
-def _root(wpml_ns: str):
-    ET.register_namespace("", KML_NS)
-    ET.register_namespace("wpml", wpml_ns)
-    kml = ET.Element(f"{{{KML_NS}}}kml")
-    return kml, ET.SubElement(kml, f"{{{KML_NS}}}Document")
-
-
-def _serialise(root) -> bytes:
-    ET.indent(root, space="  ")
-    return b'<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding="utf-8")
-
-
-def build_template_kml(plan: MissionPlan, cfg: FollowupConfig, now_ms: int | None = None) -> bytes:
-    ns = f"http://www.dji.com/wpmz/{cfg.wpml_version}"
-    x = _X(ns)
-    kml, doc = _root(ns)
-    now_ms = int(time.time() * 1000) if now_ms is None else now_ms
-    x.w(doc, "author", "pointersearch")
-    x.w(doc, "createTime", now_ms)
-    x.w(doc, "updateTime", now_ms)
-    _mission_config(x, doc, cfg, plan.transit_height_m)
-
-    folder = x.k(doc, "Folder")
-    x.w(folder, "templateType", "waypoint")
-    x.w(folder, "templateId", 0)
-    cs = x.w(folder, "waylineCoordinateSysParam")
-    x.w(cs, "coordinateMode", "WGS84")
-    x.w(cs, "heightMode", "relativeToStartPoint")
-    x.w(folder, "autoFlightSpeed", cfg.transit_speed_ms)
-    x.w(folder, "globalHeight", plan.transit_height_m)
-    x.w(folder, "caliFlightEnable", 0)
-    x.w(folder, "gimbalPitchMode", "usePointSetting")
-    _heading_param(x, folder, "globalWaypointHeadingParam")
-    x.w(folder, "globalWaypointTurnMode", "toPointAndStopWithDiscontinuityCurvature")
-    x.w(folder, "globalUseStraightLine", 1)
-
-    group_id = 0
-    for i, wp in enumerate(plan.waypoints):
-        pm = x.k(folder, "Placemark")
-        pt = x.k(pm, "Point")
-        x.k(pt, "coordinates", f"{wp.lon:.8f},{wp.lat:.8f}")
-        x.w(pm, "index", i)
-        x.w(pm, "ellipsoidHeight", wp.height_m)
-        x.w(pm, "height", wp.height_m)
-        x.w(pm, "useGlobalHeight", 0)
-        x.w(pm, "useGlobalSpeed", 0)
-        x.w(pm, "waypointSpeed", wp.speed_ms)
-        x.w(pm, "useGlobalHeadingParam", 1)
-        x.w(pm, "useGlobalTurnParam", 1)
-        x.w(pm, "useStraightLine", 1)
-        x.w(pm, "gimbalPitchAngle", cfg.gimbal_pitch_deg)
-        if wp.inspect:
-            _action_group(x, pm, i, group_id, wp, cfg)
-            group_id += 1
-
-    pp = x.w(folder, "payloadParam")
-    x.w(pp, "payloadPositionIndex", cfg.payload_position)
-    x.w(pp, "imageFormat", cfg.photo_lenses)
-    return _serialise(kml)
-
-
-def build_waylines_wpml(plan: MissionPlan, cfg: FollowupConfig) -> bytes:
-    ns = f"http://www.dji.com/wpmz/{cfg.wpml_version}"
-    x = _X(ns)
-    kml, doc = _root(ns)
-    _mission_config(x, doc, cfg, plan.transit_height_m)
-
-    folder = x.k(doc, "Folder")
-    x.w(folder, "templateId", 0)
-    x.w(folder, "executeHeightMode", "relativeToStartPoint")
-    x.w(folder, "waylineId", 0)
-    x.w(folder, "distance", round(plan.distance_m, 1))
-    x.w(folder, "duration", round(plan.duration_s, 1))
-    x.w(folder, "autoFlightSpeed", cfg.transit_speed_ms)
-
-    group_id = 0
-    for i, wp in enumerate(plan.waypoints):
-        pm = x.k(folder, "Placemark")
-        pt = x.k(pm, "Point")
-        x.k(pt, "coordinates", f"{wp.lon:.8f},{wp.lat:.8f}")
-        x.w(pm, "index", i)
-        x.w(pm, "executeHeight", wp.height_m)
-        x.w(pm, "waypointSpeed", wp.speed_ms)
-        _heading_param(x, pm)
-        tp = x.w(pm, "waypointTurnParam")
-        x.w(tp, "waypointTurnMode", "toPointAndStopWithDiscontinuityCurvature")
-        x.w(tp, "waypointTurnDampingDist", 0)
-        x.w(pm, "useStraightLine", 1)
-        if wp.inspect:
-            _action_group(x, pm, i, group_id, wp, cfg)
-            group_id += 1
-    return _serialise(kml)
-
-
-def build_kmz(plan: MissionPlan, cfg: FollowupConfig) -> bytes:
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        z.writestr("wpmz/template.kml", build_template_kml(plan, cfg))
-        z.writestr("wpmz/waylines.wpml", build_waylines_wpml(plan, cfg))
-    return buf.getvalue()
 
 
 # ---------------------------------------------------------------------------
@@ -406,47 +208,3 @@ def default_home(store) -> tuple[float, float] | None:
         if img.get("lat") is not None and img.get("lon") is not None:
             return (img["lat"], img["lon"])
     return None
-
-
-# ---------------------------------------------------------------------------
-# Inspecting a route exported from Pilot 2
-# ---------------------------------------------------------------------------
-def wpml_info(kmz_path) -> dict:
-    """Read the aircraft/payload codes and format version from an existing KMZ, so
-    they can be copied into ``followup`` in pointersearch.json."""
-    out: dict = {"files": []}
-    with zipfile.ZipFile(kmz_path) as z:
-        out["files"] = z.namelist()
-        name = next((n for n in z.namelist() if n.endswith("waylines.wpml")), None) or \
-            next((n for n in z.namelist() if n.endswith("template.kml")), None)
-        if name is None:
-            raise MissionError("no waylines.wpml or template.kml inside the KMZ")
-        data = z.read(name)
-    root = ET.fromstring(data)
-    wpml_ns = next((el.tag[1:].split("}")[0] for el in root.iter()
-                    if el.tag.startswith("{http://www.dji.com/wpmz/")), None)
-    if wpml_ns is None:
-        raise MissionError("no DJI wpml namespace found")
-
-    def find(tag):
-        el = next(root.iter(f"{{{wpml_ns}}}{tag}"), None)
-        return el.text.strip() if el is not None and el.text else None
-
-    def to_int(v):
-        return int(v) if v is not None and v.lstrip("-").isdigit() else v
-
-    lenses = sorted({el.text.strip() for tag in ("payloadLensIndex", "imageFormat")
-                     for el in root.iter(f"{{{wpml_ns}}}{tag}") if el.text})
-    out.update({
-        "read_from": name,
-        "wpml_version": wpml_ns.rsplit("/", 1)[-1],
-        "drone_enum": to_int(find("droneEnumValue")),
-        "drone_sub_enum": to_int(find("droneSubEnumValue")),
-        "payload_enum": to_int(find("payloadEnumValue")),
-        "payload_sub_enum": to_int(find("payloadSubEnumValue")),
-        "payload_position": to_int(find("payloadPositionIndex")),
-        "height_mode": find("executeHeightMode") or find("heightMode"),
-        "lens_strings_seen": lenses,
-        "actions_seen": sorted({el.text.strip() for el in root.iter(f"{{{wpml_ns}}}actionActuatorFunc") if el.text}),
-    })
-    return out
