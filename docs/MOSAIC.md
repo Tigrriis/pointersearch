@@ -90,6 +90,59 @@ uniform ground, no overlap) are placed as recorded.
 - It has been validated on generated test flights with known truth, not yet
   against surveyed points on a real flight.
 
+## Exporting the map as a GeoTIFF
+
+A GeoTIFF is a picture that carries its own position and coordinate system, so
+GIS software (QGIS, ArcGIS, Global Mapper, CalTopo desktop) puts it in the right
+place with nothing else to set up.
+
+On the review map: **Export…**, then under *Map as a GeoTIFF* choose:
+
+- **Lens.** Colour or thermal. Each is its own file. The thermal file is the
+  thermal pictures as the aircraft rendered them (its palette), not temperatures.
+- **Coordinate system.**
+  - *GDA2020 / MGA zone N* - the Australian standard grid, in metres. Offered in
+    Australia. Tasmania is zone 55 (EPSG:7855).
+  - *WGS 84 / UTM zone N* - the same grid idea on the GPS datum, in metres.
+    Available anywhere.
+  - *WGS 84 latitude / longitude* (EPSG:4326) - degrees.
+- **Detail.** The ground size of a pixel. The default is the photos' own detail.
+  Larger pixels make a smaller file.
+
+Press *Create GeoTIFF*, wait for the progress bar, then *Download*. The file is
+also kept in the mission's `exports` folder.
+
+How it is made, and what to expect:
+
+- It is rendered from the **original photos**, not from the low-detail patches
+  shown on the review map, so the card or folder must still be connected where
+  the photos were added from. If a photo file cannot be found, its low-detail
+  patch is used instead and the result says how many.
+- Each photo is laid at its lined-up place and blended towards its middle, on a
+  north-up grid of square pixels. Outside the photos the file is transparent.
+- Very large areas: the pixel size is raised to keep the picture within about
+  64 million pixels, and the result says so.
+- **Datum.** Positions come from the aircraft's GPS, which is WGS 84. They are
+  written into the MGA grid without a datum shift. In 2026 the two differ by
+  about half a metre, from continental drift since 2020, which is within this
+  map's accuracy.
+- **Accuracy.** The same as the map: about a metre where photos lined up, as
+  recorded where they did not. The file's description says it is not a surveyed
+  orthophoto. Do not measure from it where that matters.
+
+From the command line, both lenses at once:
+
+```bash
+pointersearch geotiff missions/<name> --crs mga
+```
+
+`--lens colour|thermal|both`, `--crs mga|utm|latlon`, `--gsd-cm 5`, `-o file.tif`.
+
+Checked against GDAL (the library GIS software is built on): the coordinate maths
+agrees with it to a ten-thousandth of a millimetre, it reads the coordinate
+system, position and transparency from the files, and objects at known
+coordinates are found within the map's accuracy of where the file says they are.
+
 ## Files and commands
 
 ```
@@ -97,6 +150,7 @@ missions/<name>/
   overlays/            each photo as first placed
   overlays_aligned/    each photo re-laid at its corrected place
   features/            the distinct points of each photo
+  exports/             GeoTIFFs made from the review map
 ```
 
 ```bash

@@ -9,6 +9,7 @@
     pointersearch mission missions/2025-06-01-blue-mtns --transit 90 --inspect 60
     pointersearch plan    missions/2025-06-01-blue-mtns
     pointersearch merge   missions/2025-06-01-blue-mtns
+    pointersearch geotiff missions/2025-06-01-blue-mtns --crs mga
     pointersearch demo    demo
 """
 
@@ -189,6 +190,33 @@ def cmd_merge(a):
         print("no photos on the map to merge")
 
 
+def cmd_geotiff(a):
+    """The lined-up map as GeoTIFF files that GIS software places correctly."""
+    from .geotiff import ExportError, export_options, export_ortho
+    from .store import Store
+    wd = Path(a.workdir)
+    st, cfg = Store(wd), Config.load(wd)
+    have = [l["lens"] for l in export_options(st)["lenses"]]
+    lenses = have if a.lens == "both" else [a.lens]
+    if not have:
+        sys.exit("there are no photos on the map to export")
+    for lens in lenses:
+        out = Path(a.output) if a.output and len(lenses) == 1 else None
+        try:
+            info = export_ortho(st, wd, cfg, lens, a.crs, a.gsd_cm / 100.0 if a.gsd_cm else None, out,
+                                progress=lambda d, t, name: print(f"\r  {lens}: {d}/{t} photos", end="", flush=True))
+        except ExportError as exc:
+            sys.exit(f"\ncannot export {lens}: {exc}")
+        print(f"\rwrote {info['file']}")
+        print(f"  {info['crs']}, {info['width']} x {info['height']} px, {info['gsd_cm']} cm per pixel, "
+              f"{info['photos']} photos, {info['size_mb']} MB")
+        if info["coarsened"]:
+            print(f"  ! the area is large: pixel size was raised from {info['requested_gsd_cm']} cm to fit")
+        if info["missing_files"]:
+            print(f"  ! {info['missing_files']} photo file(s) were not found; {info['low_detail_photos']} of them were "
+                  "filled in from their low-detail map patches")
+
+
 def cmd_info(a):
     from .camera import focal_px, gsd_m, hfov_deg
     from .georef import Georeferencer
@@ -339,6 +367,16 @@ def main(argv=None):
     s = sub.add_parser("merge", help="merge all overlays into one georeferenced PNG (+ world file)")
     s.add_argument("workdir"); s.add_argument("-o", "--output"); s.add_argument("--max-px", type=int, default=12000)
     s.set_defaults(fn=cmd_merge)
+
+    s = sub.add_parser("geotiff", help="export the lined-up map as GeoTIFF (colour and thermal) for GIS software")
+    s.add_argument("workdir")
+    s.add_argument("--lens", choices=["colour", "thermal", "both"], default="both")
+    s.add_argument("--crs", choices=["mga", "utm", "latlon"],
+                   help="coordinate system: MGA on GDA2020 (Australia), UTM on WGS 84, or latitude/longitude "
+                        "(default: MGA in Australia, otherwise UTM)")
+    s.add_argument("--gsd-cm", type=float, help="ground size of a pixel in cm (default: the photos' own detail)")
+    s.add_argument("-o", "--output", help="output file (only with a single lens)")
+    s.set_defaults(fn=cmd_geotiff)
 
     s = sub.add_parser("info", help="print metadata, GSD and footprint for images")
     s.add_argument("images", nargs="+")

@@ -28,9 +28,7 @@
     <button class="btn" id="import-btn" title="process a folder of drone images into this mission">Add images…</button>
     <a class="btn" href="plan" title="draw a search route or area and export it for DJI Pilot 2">Plan route</a>
     <button class="btn" id="mission-btn" title="waypoint mission over follow-up objects for DJI Pilot 2">Mission…</button>
-    <a class="btn" href="api/export.gpx?status=accepted" download>GPX</a>
-    <a class="btn" href="api/export.kml?status=accepted" download>KML</a>
-    <a class="btn" href="api/export.geojson?status=all" download>GeoJSON</a>
+    <button class="btn" id="export-btn" title="objects for ground teams, and the map as a GeoTIFF">Export…</button>
   </div>
 </header>
 <main>
@@ -52,6 +50,31 @@
     <ul id="list"></ul>
   </aside>
 </main>
+<dialog id="export-dlg">
+  <form method="dialog">
+    <h3>Export</h3>
+    <h4>Objects</h4>
+    <p class="hint">Positions of the objects you have decided on, for a GPS unit or mapping software.</p>
+    <div class="row">
+      <a class="btn" href="api/export.gpx?status=accepted" download>Accepted as GPX</a>
+      <a class="btn" href="api/export.kml?status=accepted" download>Accepted as KML</a>
+      <a class="btn" href="api/export.gpx?status=followup" download>Follow-ups as GPX</a>
+      <a class="btn" href="api/export.geojson?status=all" download>Everything as GeoJSON</a>
+    </div>
+    <h4>Map as a GeoTIFF</h4>
+    <p class="hint">The lined-up map as a picture that GIS software (QGIS, ArcGIS, Global Mapper) places at the right spot. It is rendered from the original photos, so they must still be where they were added from.</p>
+    <div id="g-form" class="gform">
+      <label>Lens <select id="g-lens"></select></label>
+      <label>Coordinate system <select id="g-crs"></select></label>
+      <label>Detail <select id="g-gsd"></select></label>
+    </div>
+    <div id="g-status" class="summary"></div>
+    <div class="row end">
+      <button class="btn" value="cancel">Close</button>
+      <button class="btn primary" type="button" id="g-start">Create GeoTIFF</button>
+    </div>
+  </form>
+</dialog>
 <dialog id="import-dlg">
   <form method="dialog">
     <h3>Add images</h3>

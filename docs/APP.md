@@ -59,6 +59,10 @@ On the review map press *Add images…*, choose the folder that holds the photos
 with each other; the header then shows *map lined up: N/M photos*. How this
 works, what it fixes and its limits are in [MOSAIC.md](MOSAIC.md).
 
+**Export…** in the header holds the downloads: the objects you decided on as
+GPX, KML or GeoJSON, and the map itself as a GeoTIFF for GIS software, colour or
+thermal, in a coordinate system you choose.
+
 ## Reading the list
 
 Each object shows a score per detector, because the detectors measure different

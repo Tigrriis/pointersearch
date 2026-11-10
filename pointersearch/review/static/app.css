@@ -141,6 +141,15 @@ progress { width:100%; height:10px; accent-color:var(--follow); }
 .brand .ver { font-size:11px; font-weight:400; color:var(--muted); opacity:.7; margin-left:6px; }
 .lens-note { color:var(--muted); font-size:12px; margin:0 0 6px; }
 
+/* ---- export ---- */
+dialog h4 { margin:16px 0 2px; font-size:13px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
+dialog .gform { display:grid; grid-template-columns:1fr; gap:8px; margin:10px 0; }
+dialog .gform label { display:grid; grid-template-columns:150px 1fr; align-items:center; color:var(--muted); font-size:13px; }
+dialog .gform select { background:#12161a; color:var(--text); border:1px solid #3a444e; border-radius:4px; padding:5px 6px; font:inherit; min-width:0; }
+dialog .row { flex-wrap:wrap; }
+#g-status { min-height:2.6em; }
+#g-status .ok { color:var(--ok); }
+
 /* ---- lens switch ---- */
 .lens-tabs { display:flex; gap:0; margin-bottom:6px; border:1px solid #3a444e; border-radius:6px; overflow:hidden; }
 .lens-tabs:has(.lens-note) { border:0; }

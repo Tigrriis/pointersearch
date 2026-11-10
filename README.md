@@ -18,7 +18,9 @@ Use cases: missing persons (alive or deceased), lost dogs and other animals.
    up with each other by matching features where they overlap, which corrects
    GPS, heading and canopy-height errors as photos arrive. Colour and thermal
    maps, switchable. `merge` writes one PNG per lens with a world file for QGIS
-   or CalTopo. See [docs/MOSAIC.md](docs/MOSAIC.md).
+   or CalTopo, and **Export…** on the review map (or `geotiff`) writes colour
+   and thermal GeoTIFFs in MGA / GDA2020, UTM / WGS 84 or latitude/longitude.
+   See [docs/MOSAIC.md](docs/MOSAIC.md).
 4. **Detect** candidates in each frame:
    * `rx` - Reed-Xiaoli colour anomaly (what is statistically unusual for this scene)
    * `bright` - saturated, non-vegetation colours (hi-vis, jackets, packs, tents)

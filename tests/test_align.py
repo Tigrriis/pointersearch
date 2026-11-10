@@ -107,23 +107,6 @@ def test_correction_round_trip_and_serialisation():
 
 
 # ---- end to end on a mission whose record is wrong -----------------------------------
-@pytest.fixture(scope="module")
-def canopy(tmp_path_factory):
-    """Recorded with 3 m GPS error, 2 degrees heading error, and a surface 30 m above
-    take-off level (so every photo is first laid down about 37 % too large)."""
-    root = tmp_path_factory.mktemp("canopy")
-    man = generate_mission(root / "DCIM", area_n_m=150, area_e_m=200, rgb_size=(1200, 900), detail=True,
-                           pose_noise=(3.0, 2.0), alt_bias_m=30.0)
-    wd = root / "mission"
-    wd.mkdir()
-    Config().save(wd)
-    p = Pipeline(wd)
-    p.process_path(root / "DCIM")
-    before = {c["id"]: (c["lat"], c["lon"]) for c in p.store.list_candidates()}
-    stats = p.align_mission()
-    return {"wd": wd, "pipeline": p, "manifest": man, "stats": stats, "before": before, "images": root / "DCIM"}
-
-
 def test_photos_line_up_and_land_in_the_right_place(canopy):
     p, man, stats = canopy["pipeline"], canopy["manifest"], canopy["stats"]
     n_wide = sum(1 for i in p.store.list_images() if i["source"] == "wide")

@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from ..config import Config
 from ..export import FORMATS, export
+from ..geotiff import ExportError, ExportJob, export_options
 from ..ingest import IngestError, IngestJob, pick_folder
 from ..mission import MissionError, default_home, plan_mission, points_from_store
 from ..pipeline import DETECTOR_VERSION
@@ -31,6 +32,12 @@ class IngestRequest(BaseModel):
     folder: str
     watch: bool = False
     force: bool = False          # process again images that are already in the mission
+
+
+class GeoTiffRequest(BaseModel):
+    lens: str = "colour"             # colour | thermal
+    crs: str | None = None           # mga | utm | latlon; None = the best fit for the place
+    gsd_cm: float | None = None      # ground size of a pixel; None = the photos' own detail
 
 
 class Decision(BaseModel):
@@ -53,6 +60,8 @@ def create_app(workdir: str | Path, tiles_dir: str | Path | None = None, mission
     always_fresh(app)
     ingest = IngestJob(workdir)
     app.state.ingest = ingest
+    geotiff = ExportJob(workdir)
+    app.state.geotiff = geotiff
 
     @app.get("/")
     def index():
@@ -151,6 +160,23 @@ def create_app(workdir: str | Path, tiles_dir: str | Path | None = None, mission
         if not out.is_file() and not render_view(img["path"], px, py, win, bw, bh, out):
             raise HTTPException(500, "could not read that photo")
         return FileResponse(out, headers={"Cache-Control": "max-age=3600"})
+
+    # ---- the map as a GeoTIFF ---------------------------------------------
+    @app.get("/api/geotiff/options")
+    def geotiff_options():
+        """Which lenses can be exported, in which coordinate systems, at what detail."""
+        return export_options(store)
+
+    @app.get("/api/geotiff")
+    def geotiff_status():
+        return geotiff.status()
+
+    @app.post("/api/geotiff")
+    def geotiff_start(body: GeoTiffRequest):
+        try:
+            return geotiff.start(body.lens, body.crs, body.gsd_cm / 100.0 if body.gsd_cm else None)
+        except ExportError as exc:
+            raise HTTPException(409 if "already running" in str(exc) else 400, str(exc))
 
     @app.get("/api/export.{fmt}")
     def export_route(fmt: str, status: str = "accepted", by: str = "group"):

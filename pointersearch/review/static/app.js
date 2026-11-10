@@ -74,10 +74,7 @@
     state.alignText = al && al.links ? ` · map lined up: ${al.aligned}/${al.photos} photos` : '';
     $('stats').title = al && al.links ? `Photos were matched to their neighbours at ${al.links} overlaps. Matched points were ${al.before_m} m apart as recorded and are ${al.after_m} m apart now.` : '';
     $('stats').textContent += state.alignText;
-    footprintGroup.clearLayers();
-    images.filter(i => i.footprint).forEach(i => {
-      L.polygon(i.footprint, { color: '#5d7a96', weight: 1, fill: false, opacity: 0.6, interactive: false }).addTo(footprintGroup);
-    });
+    state.images = images;
     state.cands = cands;
     // the first view covers what was flown and what is planned
     const pts = images.filter(i => i.lat).map(i => [i.lat, i.lon])
@@ -122,6 +119,12 @@
     const f = filters();
     // lay down the lenses chosen in "map", lower lenses first so zoom sits on colour
     const lenses = MAP_LENSES[f.map] || MAP_LENSES.colour;
+    // outlines of the photos of those lenses only (wide ones when the map is off)
+    const outlined = lenses.length ? lenses : MAP_LENSES.colour;
+    footprintGroup.clearLayers();
+    (state.images || []).filter(i => i.footprint && outlined.includes(i.source || 'unknown')).forEach(i => {
+      L.polygon(i.footprint, { color: '#5d7a96', weight: 1, fill: false, opacity: 0.6, interactive: false }).addTo(footprintGroup);
+    });
     const mapKey = f.map + ':' + state.overlays.size;
     if (state.mapKey !== mapKey) {
       overlayGroup.clearLayers();
@@ -306,7 +309,7 @@
   }
 
   document.addEventListener('keydown', e => {
-    if (e.target.tagName === 'INPUT' || $('mission-dlg').open || $('import-dlg').open) return;
+    if (e.target.tagName === 'INPUT' || $('mission-dlg').open || $('import-dlg').open || $('export-dlg').open) return;
     const k = e.key.toLowerCase();
     if (k === 'a') decide('accepted');
     else if (k === 'w') decide('followup');
@@ -373,6 +376,62 @@
     updateMission();
   });
   ['m-transit', 'm-inspect'].forEach(id => $(id).addEventListener('input', updateMission));
+
+  // ---- export: objects, and the map as a GeoTIFF ------------------------------
+  const exportState = { options: null, timer: null };
+  const lensLabel = l => l === 'thermal' ? 'Thermal' : 'Colour';
+  function fillGsd() {
+    const o = exportState.options; if (!o) return;
+    const lens = o.lenses.find(l => l.lens === $('g-lens').value); if (!lens) return;
+    const steps = [lens.default_gsd_cm, 2, 5, 10, 25, 50].filter((v, i, a) => (i === 0 || v > lens.native_gsd_cm * 0.5) && a.indexOf(v) === i).sort((a, b) => a - b);
+    $('g-gsd').innerHTML = steps.map(v => `<option value="${v}" ${v === lens.default_gsd_cm ? 'selected' : ''}>${v} cm per pixel${v === lens.default_gsd_cm ? ' (the photos\' own detail)' : v < lens.default_gsd_cm ? ' (finer than the photos)' : ''}</option>`).join('');
+  }
+  function showExport(st) {
+    const el = $('g-status');
+    const busy = st.state === 'running';
+    $('g-start').disabled = busy;
+    ['g-lens', 'g-crs', 'g-gsd'].forEach(id => { $(id).disabled = busy; });
+    if (busy) {
+      el.innerHTML = `<progress max="${Math.max(1, st.total)}" value="${st.done}"></progress><div>${st.total ? `Laying down photo ${Math.min(st.done + 1, st.total)} of ${st.total}` : 'Starting'}${st.current ? ' · ' + st.current : ''}</div>`;
+    } else if (st.state === 'error') {
+      el.innerHTML = `<div class="err">${st.message ? st.message.charAt(0).toUpperCase() + st.message.slice(1) + '.' : 'The export failed.'}</div>`;
+    } else if (st.state === 'done' && st.result) {
+      const r = st.result;
+      el.innerHTML = `<div class="ok">Ready: ${r.width} × ${r.height} pixels at ${r.gsd_cm} cm, ${r.size_mb} MB, ${r.crs}.</div>`
+        + (r.coarsened ? `<div class="warn">⚠ The area is large, so the pixel size was raised from ${r.requested_gsd_cm} cm to fit.</div>` : '')
+        + (r.missing_files ? `<div class="warn">⚠ ${r.missing_files} photo file${r.missing_files > 1 ? 's were' : ' was'} not found, so ${r.low_detail_photos} photo${r.low_detail_photos === 1 ? ' is' : 's are'} at the map's lower detail. Connect the card or folder and export again for full detail.</div>` : '')
+        + `<div style="margin-top:8px"><a class="btn primary" href="${r.url}" download>Download ${r.name}</a></div>`;
+    } else if (!exportState.options || !exportState.options.lenses.length) {
+      el.innerHTML = '<div class="hint">There are no photos on the map yet.</div>';
+    } else {
+      el.innerHTML = '';
+    }
+    clearTimeout(exportState.timer);
+    if (busy) exportState.timer = setTimeout(pollExport, 800);
+  }
+  async function pollExport() {
+    try { showExport(await fetch('api/geotiff').then(r => r.json())); } catch (e) { /* server stopped */ }
+  }
+  $('export-btn').addEventListener('click', async () => {
+    $('export-dlg').showModal();
+    const o = exportState.options = await fetch('api/geotiff/options').then(r => r.json());
+    const keep = { lens: $('g-lens').value, crs: $('g-crs').value };
+    $('g-lens').innerHTML = o.lenses.map(l => `<option value="${l.lens}">${lensLabel(l.lens)} (${l.photos} photos)</option>`).join('');
+    $('g-crs').innerHTML = o.crs.map(c => `<option value="${c.code}">${c.label}</option>`).join('');
+    if (o.lenses.some(l => l.lens === keep.lens)) $('g-lens').value = keep.lens;
+    else if (filters().map === 'thermal' && o.lenses.some(l => l.lens === 'thermal')) $('g-lens').value = 'thermal';
+    if (o.crs.some(c => c.code === keep.crs)) $('g-crs').value = keep.crs;
+    $('g-form').hidden = $('g-start').hidden = !o.lenses.length;
+    fillGsd();
+    pollExport();
+  });
+  $('g-lens').addEventListener('change', fillGsd);
+  $('g-start').addEventListener('click', async () => {
+    const r = await fetch('api/geotiff', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lens: $('g-lens').value, crs: $('g-crs').value, gsd_cm: +$('g-gsd').value }) });
+    const b = await r.json().catch(() => ({}));
+    showExport(r.ok ? b : { state: 'error', message: typeof b.detail === 'string' ? b.detail : 'could not start the export' });
+  });
 
   // ---- add images ---------------------------------------------------------
   const importState = { busy: false, timer: null, last: null };
