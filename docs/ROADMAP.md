@@ -23,7 +23,8 @@
 - [x] Switch each object between the wide, zoom and thermal frames of the same shutter press
 - [x] Photos lined up with each other by feature matching (shift, turn, scale per photo),
   soft seams, brightness matching, thermal map following the colour map
-- [x] Export the lined-up map as GeoTIFF, colour and thermal, in MGA/GDA2020, UTM/WGS 84 or
+- [x] Export the lined-up map as GeoTIFF: colour, thermal, zoom, and colour with zoom on top,
+  in MGA/GDA2020, UTM/WGS 84 or
   latitude/longitude, rendered from the original photos
 - Map: serve the mosaic as tiles instead of one picture per photo (large missions), KMZ ground
   overlay export, terrain model for steep ground, temperature-valued thermal GeoTIFF.

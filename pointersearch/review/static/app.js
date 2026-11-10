@@ -379,12 +379,11 @@
 
   // ---- export: objects, and the map as a GeoTIFF ------------------------------
   const exportState = { options: null, timer: null };
-  const lensLabel = l => l === 'thermal' ? 'Thermal' : 'Colour';
   function fillGsd() {
     const o = exportState.options; if (!o) return;
     const lens = o.lenses.find(l => l.lens === $('g-lens').value); if (!lens) return;
-    const steps = [lens.default_gsd_cm, 2, 5, 10, 25, 50].filter((v, i, a) => (i === 0 || v > lens.native_gsd_cm * 0.5) && a.indexOf(v) === i).sort((a, b) => a - b);
-    $('g-gsd').innerHTML = steps.map(v => `<option value="${v}" ${v === lens.default_gsd_cm ? 'selected' : ''}>${v} cm per pixel${v === lens.default_gsd_cm ? ' (the photos\' own detail)' : v < lens.default_gsd_cm ? ' (finer than the photos)' : ''}</option>`).join('');
+    const steps = [lens.default_gsd_cm, 1, 2, 5, 10, 25, 50].filter((v, i, a) => (i === 0 || v > lens.native_gsd_cm * 0.5) && a.indexOf(v) === i).sort((a, b) => a - b);
+    $('g-gsd').innerHTML = steps.map(v => `<option value="${v}" ${v === lens.default_gsd_cm ? 'selected' : ''}>${v} cm per pixel${v === lens.default_gsd_cm ? ' (default)' : v < lens.native_gsd_cm ? ' (finer than the photos)' : ''}</option>`).join('');
   }
   function showExport(st) {
     const el = $('g-status');
@@ -416,10 +415,13 @@
     $('export-dlg').showModal();
     const o = exportState.options = await fetch('api/geotiff/options').then(r => r.json());
     const keep = { lens: $('g-lens').value, crs: $('g-crs').value };
-    $('g-lens').innerHTML = o.lenses.map(l => `<option value="${l.lens}">${lensLabel(l.lens)} (${l.photos} photos)</option>`).join('');
+    $('g-lens').innerHTML = o.lenses.map(l => `<option value="${l.lens}">${l.label} (${l.photos} photos)</option>`).join('');
     $('g-crs').innerHTML = o.crs.map(c => `<option value="${c.code}">${c.label}</option>`).join('');
     if (o.lenses.some(l => l.lens === keep.lens)) $('g-lens').value = keep.lens;
-    else if (filters().map === 'thermal' && o.lenses.some(l => l.lens === 'thermal')) $('g-lens').value = 'thermal';
+    else {                                                    // start from what the map is showing
+      const fromMap = { thermal: 'thermal', zoom: 'colour+zoom' }[filters().map];
+      if (fromMap && o.lenses.some(l => l.lens === fromMap)) $('g-lens').value = fromMap;
+    }
     if (o.crs.some(c => c.code === keep.crs)) $('g-crs').value = keep.crs;
     $('g-form').hidden = $('g-start').hidden = !o.lenses.length;
     fillGsd();

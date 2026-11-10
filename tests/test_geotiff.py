@@ -103,7 +103,8 @@ HOT = lambda rgb: (rgb[..., :3].min(axis=-1) > 200) & (rgb[..., 3] > 0)
 
 def test_options_describe_what_can_be_exported(canopy):
     o = export_options(canopy["pipeline"].store)
-    assert [l["lens"] for l in o["lenses"]] == ["colour", "thermal"]
+    assert [l["lens"] for l in o["lenses"]] == ["colour", "thermal"]              # no zoom photos, so no zoom choices
+    assert [l["label"] for l in o["lenses"]] == ["Colour", "Thermal"]
     colour, thermal = o["lenses"]
     assert colour["photos"] == thermal["photos"] > 0 and colour["missing_files"] == 0
     # detail follows the lined-up scale: the canopy photos are finer than first recorded
@@ -143,8 +144,12 @@ def test_thermal_export_and_detail_setting(canopy, tmp_path):
     # too big for the allowed size: the pixel size is raised to fit, and the result says so
     capped = export_ortho(p.store, canopy["wd"], p.cfg, "colour", "mga", 0.05, tmp_path / "cap.tif", max_pixels=250_000)
     assert capped["coarsened"] and capped["width"] * capped["height"] <= 250_000 and capped["gsd_cm"] > capped["requested_gsd_cm"]
-    with pytest.raises(ExportError, match="colour or thermal"):
+    with pytest.raises(ExportError, match="lens must be one of"):
+        export_ortho(p.store, canopy["wd"], p.cfg, "fisheye")
+    with pytest.raises(ExportError, match="no zoom photos"):                  # this mission has none
         export_ortho(p.store, canopy["wd"], p.cfg, "zoom")
+    with pytest.raises(ExportError, match="no zoom photos"):
+        export_ortho(p.store, canopy["wd"], p.cfg, "colour+zoom")
     with pytest.raises(ExportError, match="not available here"):
         export_ortho(p.store, canopy["wd"], p.cfg, "colour", "nad83")
 
@@ -179,7 +184,7 @@ def test_export_from_the_review_map(canopy):
     c = TestClient(create_app(canopy["wd"]))
     assert c.get("/api/geotiff").json()["state"] == "idle"
     assert [l["lens"] for l in c.get("/api/geotiff/options").json()["lenses"]] == ["colour", "thermal"]
-    assert c.post("/api/geotiff", json={"lens": "zoom"}).status_code == 400
+    assert c.post("/api/geotiff", json={"lens": "fisheye"}).status_code == 400
     assert c.post("/api/geotiff", json={"lens": "thermal", "gsd_cm": 0.01}).status_code == 400
 
     r = c.post("/api/geotiff", json={"lens": "thermal", "crs": "utm", "gsd_cm": 20})
@@ -216,3 +221,136 @@ def test_gdal_reads_the_exported_map(canopy, tmp_path):
         win = np.moveaxis(ds.read(window=((row - r, row + r + 1), (col - r, col + r + 1))), 0, -1).astype(int)
         assert BLUE(win).any()                                       # the jacket is within 3 m of where GDAL looks
         assert ds.bounds.left == pytest.approx(info["extent"][0]) and ds.bounds.top == pytest.approx(info["extent"][3])
+
+
+# ---- the zoom lens -------------------------------------------------------------------
+@pytest.fixture(scope="module")
+def zoomed(tmp_path_factory):
+    """A flight that also saved zoom photos, recorded with GPS and heading errors and a raised
+    surface. The zoom photos can only land in the right place by taking their wide photo's
+    correction."""
+    from pointersearch.config import Config
+    from pointersearch.devtools.synthetic import generate_mission
+    from pointersearch.pipeline import Pipeline
+    root = tmp_path_factory.mktemp("zoomed")
+    man = generate_mission(root / "DCIM", area_n_m=120, area_e_m=160, rgb_size=(1200, 900), detail=True,
+                           with_thermal=False, with_zoom=True, pose_noise=(3.0, 2.0), alt_bias_m=30.0)
+    wd = root / "mission"
+    wd.mkdir()
+    Config().save(wd)
+    p = Pipeline(wd)
+    p.process_path(root / "DCIM")
+    stats = p.align_mission()
+    assert stats["after_m"] < 0.3
+    return {"wd": wd, "pipeline": p, "manifest": man}
+
+
+def _grey(path, extent, gsd):
+    """A file as a grey picture and coverage mask on a common grid, for comparing two exports."""
+    import cv2
+    g = read_georef(path)
+    with Image.open(path) as im:
+        a = np.asarray(im)
+    x0 = int(round((extent[0] - g["x_left"]) / g["pixel"][0])); y0 = int(round((g["y_top"] - extent[3]) / g["pixel"][1]))
+    w = int(round((extent[2] - extent[0]) / g["pixel"][0])); h = int(round((extent[3] - extent[1]) / g["pixel"][1]))
+    crop = np.zeros((h, w, 4), np.uint8)                       # the asked-for extent may reach beyond the file
+    sy0, sx0, sy1, sx1 = max(0, y0), max(0, x0), min(a.shape[0], y0 + h), min(a.shape[1], x0 + w)
+    if sy1 > sy0 and sx1 > sx0:
+        crop[sy0 - y0:sy1 - y0, sx0 - x0:sx1 - x0] = a[sy0:sy1, sx0:sx1]
+    size = (int(round((extent[2] - extent[0]) / gsd)), int(round((extent[3] - extent[1]) / gsd)))
+    grey = cv2.resize(cv2.cvtColor(crop[..., :3], cv2.COLOR_RGB2GRAY), size, interpolation=cv2.INTER_AREA)
+    return grey.astype(np.float32), cv2.resize(crop[..., 3], size, interpolation=cv2.INTER_NEAREST) > 0
+
+
+def test_zoom_choices_appear_when_there_are_zoom_photos(zoomed):
+    o = export_options(zoomed["pipeline"].store)
+    by = {l["lens"]: l for l in o["lenses"]}
+    assert list(by) == ["colour", "zoom", "colour+zoom"]
+    assert by["colour+zoom"]["label"] == "Colour with zoom on top"
+    assert by["colour+zoom"]["photos"] == by["colour"]["photos"] + by["zoom"]["photos"]
+    # zoom photos are about three times finer (70 mm against 24 mm); the default follows each product
+    assert by["zoom"]["native_gsd_cm"] == pytest.approx(by["colour"]["native_gsd_cm"] * 24 / 70, rel=0.05)
+    assert by["zoom"]["default_gsd_cm"] < by["colour"]["default_gsd_cm"]
+    assert by["colour+zoom"]["default_gsd_cm"] == by["colour"]["default_gsd_cm"]
+    assert by["colour+zoom"]["native_gsd_cm"] == by["zoom"]["native_gsd_cm"]
+
+
+def test_zoom_export_lands_on_the_same_ground_as_colour(zoomed, tmp_path):
+    import cv2
+    p, wd = zoomed["pipeline"], zoomed["wd"]
+    colour = export_ortho(p.store, wd, p.cfg, "colour", "mga", 0.10, tmp_path / "c.tif")
+    zoom = export_ortho(p.store, wd, p.cfg, "zoom", "mga", 0.05, tmp_path / "z.tif")
+    assert zoom["lens"] == "zoom" and zoom["layers"] == [zoom["photos"]] and zoom["gsd_cm"] == 5
+    assert zoom["file"].endswith("z.tif") and read_georef(zoom["file"])["epsg"] == 7856
+
+    # zoom photos are islands inside the colour map: smaller extent, mostly see-through
+    ce, ze = colour["extent"], zoom["extent"]
+    assert ze[0] > ce[0] and ze[2] < ce[2] and ze[1] > ce[1] and ze[3] < ce[3]
+    zg, zmask = _grey(zoom["file"], ze, 0.2)
+    cg, cmask = _grey(colour["file"], ze, 0.2)
+    assert 0.05 < zmask.mean() < 0.6 and cmask.mean() > 0.95
+
+    # Where a zoom photo sits, it shows the same ground as the colour map at that spot. Measure
+    # the offset between the two directly; a zoom photo laid from its own record alone would be
+    # tens of metres out here.
+    both = zmask & cmask
+    ys, xs = np.nonzero(both)
+    y0, y1, x0, x1 = ys.min(), ys.max(), xs.min(), xs.max()
+    n, lab = cv2.connectedComponents(zmask.astype(np.uint8))
+    shifts = []
+    for k in range(1, n):
+        yy, xx = np.nonzero(lab == k)
+        if len(yy) < 900:
+            continue
+        a = zg[yy.min() + 6:yy.max() - 5, xx.min() + 6:xx.max() - 5]
+        b = cg[yy.min() + 6:yy.max() - 5, xx.min() + 6:xx.max() - 5]
+        (dx, dy), response = cv2.phaseCorrelate(a - a.mean(), b - b.mean(), cv2.createHanningWindow(a.shape[::-1], cv2.CV_32F))
+        shifts.append(math.hypot(dx, dy) * 0.2)
+    assert len(shifts) >= 3 and np.median(shifts) < 0.6, shifts            # metres
+
+
+def test_colour_with_zoom_on_top(zoomed, tmp_path):
+    import cv2
+    p, wd = zoomed["pipeline"], zoomed["wd"]
+    # 5 cm per pixel: finer than the colour photos (about 7 cm), coarser than the zoom photos (about 2.5 cm)
+    colour = export_ortho(p.store, wd, p.cfg, "colour", "mga", 0.05, tmp_path / "c.tif")
+    zoom = export_ortho(p.store, wd, p.cfg, "zoom", "mga", 0.05, tmp_path / "z.tif")
+    both = export_ortho(p.store, wd, p.cfg, "colour+zoom", "mga", 0.05)
+    assert both["layers"] == [colour["photos"], zoom["photos"]] and both["photos"] == colour["photos"] + zoom["photos"]
+    assert both["name"].endswith("_colour-zoom_epsg7856_5cm.tif")
+    assert (both["width"], both["height"]) == (colour["width"], colour["height"])       # zoom lies inside colour
+    assert both["extent"] == pytest.approx(colour["extent"])
+
+    ext = colour["extent"]
+    bg, bmask = _grey(both["file"], ext, 0.05)
+    cg, cmask = _grey(colour["file"], ext, 0.05)
+    zg, zmask = _grey(zoom["file"], ext, 0.05)
+    assert (bmask == cmask).mean() > 0.999                                # same coverage as colour alone
+    away = cmask & ~zmask
+    assert np.abs(bg[away] - cg[away]).max() <= 1                         # untouched where there is no zoom photo
+    # In the middle of each zoom photo the result is the zoom photo: identical to the zoom-only
+    # export, and sharper than the colour map beneath it.
+    # "middle" = at least 5 m in from the photo's edge, clear of the band where it fades in
+    core = cv2.erode(zmask.astype(np.uint8), np.ones((201, 201), np.uint8)) > 0
+    assert core.sum() > 20000
+    # (the two files sit on pixel grids a fraction of a pixel apart, so sharp edges differ slightly)
+    same_as_zoom, same_as_colour = np.abs(bg[core] - zg[core]), np.abs(bg[core] - cg[core])
+    assert same_as_zoom.mean() < 0.5 and (same_as_zoom > 2).mean() < 0.01
+    assert same_as_colour.mean() > same_as_zoom.mean() * 3
+    detail = lambda g: float(np.abs(cv2.Laplacian(g, cv2.CV_32F))[core].mean())
+    assert detail(bg) == pytest.approx(detail(zg), rel=0.02)
+    assert detail(bg) > detail(cg) * 1.2
+    # yet both show the same ground: zoom and colour agree closely once blurred to the same softness
+    soft = lambda g: cv2.GaussianBlur(g, (0, 0), 4)
+    assert np.abs(soft(bg) - soft(cg))[core].mean() < 3.0
+
+
+def test_zoom_exports_from_the_review_map(zoomed):
+    c = TestClient(create_app(zoomed["wd"]))
+    assert [l["lens"] for l in c.get("/api/geotiff/options").json()["lenses"]] == ["colour", "zoom", "colour+zoom"]
+    r = c.post("/api/geotiff", json={"lens": "colour+zoom", "crs": "utm", "gsd_cm": 25})
+    assert r.status_code == 200
+    c.app.state.geotiff.join(60)
+    s = c.get("/api/geotiff").json()
+    assert s["state"] == "done" and s["result"]["lens"] == "colour+zoom" and s["result"]["epsg"] == 32756
+    assert c.get("/" + s["result"]["url"]).status_code == 200

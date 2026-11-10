@@ -197,14 +197,14 @@ def cmd_geotiff(a):
     wd = Path(a.workdir)
     st, cfg = Store(wd), Config.load(wd)
     have = [l["lens"] for l in export_options(st)["lenses"]]
-    lenses = have if a.lens == "both" else [a.lens]
+    lenses = [l for l in have if "+" not in l] if a.lens in ("all", "both") else [a.lens]
     if not have:
         sys.exit("there are no photos on the map to export")
     for lens in lenses:
         out = Path(a.output) if a.output and len(lenses) == 1 else None
         try:
             info = export_ortho(st, wd, cfg, lens, a.crs, a.gsd_cm / 100.0 if a.gsd_cm else None, out,
-                                progress=lambda d, t, name: print(f"\r  {lens}: {d}/{t} photos", end="", flush=True))
+                                progress=lambda d, t, name, lens=lens: print(f"\r  {lens}: {d}/{t} photos", end="", flush=True))
         except ExportError as exc:
             sys.exit(f"\ncannot export {lens}: {exc}")
         print(f"\rwrote {info['file']}")
@@ -370,7 +370,9 @@ def main(argv=None):
 
     s = sub.add_parser("geotiff", help="export the lined-up map as GeoTIFF (colour and thermal) for GIS software")
     s.add_argument("workdir")
-    s.add_argument("--lens", choices=["colour", "thermal", "both"], default="both")
+    s.add_argument("--lens", choices=["all", "colour", "thermal", "zoom", "colour+zoom", "both"], default="all",
+                   help="all = one file each for colour, thermal and zoom where present; "
+                        "colour+zoom = colour with the zoom photos laid on top")
     s.add_argument("--crs", choices=["mga", "utm", "latlon"],
                    help="coordinate system: MGA on GDA2020 (Australia), UTM on WGS 84, or latitude/longitude "
                         "(default: MGA in Australia, otherwise UTM)")

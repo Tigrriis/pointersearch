@@ -98,16 +98,24 @@ place with nothing else to set up.
 
 On the review map: **Export…**, then under *Map as a GeoTIFF* choose:
 
-- **Lens.** Colour or thermal. Each is its own file. The thermal file is the
-  thermal pictures as the aircraft rendered them (its palette), not temperatures.
+- **Lens.** Each choice is its own file, offered when the mission has those photos:
+  - *Colour* - the wide photos.
+  - *Thermal* - the thermal pictures as the aircraft rendered them (its palette),
+    not temperatures.
+  - *Zoom* - the zoom photos alone. They cover small patches, so most of the
+    file is see-through between them.
+  - *Colour with zoom on top* - the colour map, with each zoom photo laid over
+    it where one was taken, fading in at its edges. Choose a fine detail setting
+    to keep what the zoom lens adds.
 - **Coordinate system.**
   - *GDA2020 / MGA zone N* - the Australian standard grid, in metres. Offered in
     Australia. Tasmania is zone 55 (EPSG:7855).
   - *WGS 84 / UTM zone N* - the same grid idea on the GPS datum, in metres.
     Available anywhere.
   - *WGS 84 latitude / longitude* (EPSG:4326) - degrees.
-- **Detail.** The ground size of a pixel. The default is the photos' own detail.
-  Larger pixels make a smaller file.
+- **Detail.** The ground size of a pixel. The default is the photos' own detail
+  (for *Colour with zoom on top*, the colour photos' detail). Larger pixels make
+  a smaller file.
 
 Press *Create GeoTIFF*, wait for the progress bar, then *Download*. The file is
 also kept in the mission's `exports` folder.
@@ -136,7 +144,14 @@ From the command line, both lenses at once:
 pointersearch geotiff missions/<name> --crs mga
 ```
 
-`--lens colour|thermal|both`, `--crs mga|utm|latlon`, `--gsd-cm 5`, `-o file.tif`.
+`--lens all|colour|thermal|zoom|colour+zoom` (`all`, the default, writes colour,
+thermal and zoom where present), `--crs mga|utm|latlon`, `--gsd-cm 5`, `-o file.tif`.
+
+Zoom photos are placed by taking the correction of the wide photo from the same
+shutter press, like thermal ones. Their size on the ground comes from the focal
+length the aircraft writes into each file. If a zoom photo sits visibly off the
+colour map beneath it, that focal length or the alignment between the two lenses
+is the thing to check.
 
 Checked against GDAL (the library GIS software is built on): the coordinate maths
 agrees with it to a ten-thousandth of a millimetre, it reads the coordinate

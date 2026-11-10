@@ -10,6 +10,8 @@ Coordinate systems offered:
 * **MGA on GDA2020** (EPSG:78xx) - the Australian standard grid, metres.
 * **Latitude / longitude on WGS 84** (EPSG:4326) - degrees.
 
+Lenses: colour (wide), thermal, zoom, and colour with the zoom photos laid on top.
+
 Positions come from the aircraft's GPS, which reports WGS 84. They are written into
 the MGA grid without a datum shift: in 2026 the two differ by about half a metre
 (continental drift since 2020), which is inside the accuracy of this map.
@@ -32,8 +34,20 @@ from .config import Config
 from .geo import LocalFrame
 from .mosaic import edge_fade
 
-LENS_SOURCES = {"colour": ("wide", "unknown"), "thermal": ("thermal",)}
-DEFAULT_GSD_M = {"colour": 0.05, "thermal": 0.10}
+# What each export is made of, bottom layer first. Photos within a layer are blended with
+# each other; a later layer is laid over the earlier one wherever it has photos.
+WIDE = ("wide", "unknown")
+LENS_LAYERS = {"colour": [WIDE], "thermal": [("thermal",)], "zoom": [("zoom",)], "colour+zoom": [WIDE, ("zoom",)]}
+LENS_LABEL = {"colour": "Colour", "thermal": "Thermal", "zoom": "Zoom", "colour+zoom": "Colour with zoom on top"}
+DEFAULT_GSD_M = {"colour": 0.05, "thermal": 0.10, "zoom": 0.02, "colour+zoom": 0.05}
+LENS_SOURCES = {name: tuple(s for layer in layers for s in layer) for name, layers in LENS_LAYERS.items()}
+
+
+def _native_gsd(images: list[dict], fallback: float) -> float:
+    """Typical ground size of a pixel in these photos, at their lined-up scale."""
+    vals = [i["gsd_m"] * (Correction.from_dict(i["align"]).scale if i.get("align") else 1.0)
+            for i in images if i.get("gsd_m")]
+    return float(np.median(vals)) if vals else fallback
 MAX_PIXELS = 64_000_000
 
 
@@ -187,14 +201,17 @@ def export_options(store) -> dict:
         return {"lenses": [], "crs": [], "photos": 0}
     lat = float(np.mean([i["lat"] for i in images])); lon = float(np.mean([i["lon"] for i in images]))
     lenses = []
-    for name, sources in LENS_SOURCES.items():
-        mine = [i for i in images if i["source"] in sources]
-        if mine:
-            native = float(np.median([i["gsd_m"] * (Correction.from_dict(i["align"]).scale if i.get("align") else 1.0)
-                                      for i in mine if i.get("gsd_m")] or [DEFAULT_GSD_M[name]]))
-            lenses.append({"lens": name, "photos": len(mine), "native_gsd_cm": round(native * 100, 1),
-                           "default_gsd_cm": round(max(DEFAULT_GSD_M[name], native) * 100, 1),
-                           "missing_files": sum(1 for i in mine if not Path(i["path"]).is_file())})
+    for name, layers in LENS_LAYERS.items():
+        per_layer = [[i for i in images if i["source"] in layer] for layer in layers]
+        if not all(per_layer):                               # every layer needs photos
+            continue
+        mine = [i for layer in per_layer for i in layer]
+        base = _native_gsd(per_layer[0], DEFAULT_GSD_M[name])            # the bottom layer sets the default detail
+        finest = min(_native_gsd(layer, DEFAULT_GSD_M[name]) for layer in per_layer)
+        lenses.append({"lens": name, "label": LENS_LABEL[name], "photos": len(mine),
+                       "native_gsd_cm": round(finest * 100, 1),
+                       "default_gsd_cm": round(max(DEFAULT_GSD_M[name], base) * 100, 1),
+                       "missing_files": sum(1 for i in mine if not Path(i["path"]).is_file())})
     return {"lenses": lenses, "photos": len(images),
             "crs": [{"code": c.code, "label": c.label, "epsg": c.epsg} for c in crs_choices(lat, lon)]}
 
@@ -208,29 +225,34 @@ def export_ortho(store, workdir: Path, cfg: Config, lens: str = "colour", crs_co
     where it sets the pixel size at the middle of the map). If the area is too large for
     ``max_pixels`` the pixel size is increased to fit, and the result says so.
     """
-    if lens not in LENS_SOURCES:
-        raise ExportError("lens must be colour or thermal")
+    if lens not in LENS_LAYERS:
+        raise ExportError("lens must be one of " + ", ".join(LENS_LAYERS))
     workdir = Path(workdir)
     origin = store.origin()
     frame = LocalFrame(*origin) if origin else None
-    photos = []
-    for img in store.list_images():                      # capture order
-        if img["status"] != "ok" or img["source"] not in LENS_SOURCES[lens] or not img.get("overlay_png"):
-            continue
-        corners = _corners_latlon(img, frame)
-        if corners is not None:
-            photos.append((img, corners))
-    if not photos:
-        raise ExportError(f"there are no {lens} photos on the map to export")
+    layers = LENS_LAYERS[lens]
+    photos = []                                          # (photo, corners, layer), bottom layer first
+    for depth, sources in enumerate(layers):
+        found = 0
+        for img in store.list_images():                  # capture order
+            if img["status"] != "ok" or img["source"] not in sources or not img.get("overlay_png"):
+                continue
+            corners = _corners_latlon(img, frame)
+            if corners is not None:
+                photos.append((img, corners, depth))
+                found += 1
+        if not found:
+            what = "zoom" if sources == ("zoom",) else "thermal" if sources == ("thermal",) else "colour"
+            raise ExportError(f"there are no {what} photos on the map to export")
 
-    all_ll = np.vstack([c for _, c in photos])
+    all_ll = np.vstack([c for _, c, _ in photos])
     crs = pick_crs(crs_code, float(all_ll[:, 0].mean()), float(all_ll[:, 1].mean()))
-    native = float(np.median([i["gsd_m"] * (Correction.from_dict(i["align"]).scale if i.get("align") else 1.0)
-                              for i, _ in photos if i.get("gsd_m")] or [DEFAULT_GSD_M[lens]]))
-    want = float(gsd_m) if gsd_m else max(DEFAULT_GSD_M[lens], native)
+    base_native = _native_gsd([i for i, _, d in photos if d == 0], DEFAULT_GSD_M[lens])
+    finest = min(_native_gsd([i for i, _, d in photos if d == k], DEFAULT_GSD_M[lens]) for k in range(len(layers)))
+    want = float(gsd_m) if gsd_m else max(DEFAULT_GSD_M[lens], base_native)
     if want <= 0:
         raise ExportError("pixel size must be positive")
-    want = max(want, native * 0.5)                         # no point inventing detail far beyond the photos
+    want = max(want, finest * 0.5)                         # no point inventing detail far beyond the photos
 
     xs, ys = crs.forward(all_ll[:, 0], all_ll[:, 1])
     x_min, x_max, y_min, y_max = float(xs.min()), float(xs.max()), float(ys.min()), float(ys.max())
@@ -252,7 +274,7 @@ def export_ortho(store, workdir: Path, cfg: Config, lens: str = "colour", crs_co
         return np.column_stack([(x - x_min) / px, (y_max - y) / py]).astype(np.float32)
 
     missing = low_detail = 0
-    for n, (img, corners) in enumerate(photos):
+    for n, (img, corners, depth) in enumerate(photos):
         if progress:
             progress(n, len(photos), Path(img["path"]).name)
         dst = to_px(corners)
@@ -295,13 +317,23 @@ def export_ortho(store, workdir: Path, cfg: Config, lens: str = "colour", crs_co
         tile = cv2.warpPerspective(src_img, M, size, flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
         a = cv2.warpPerspective(alpha, M, size, flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
         a = a.astype(np.float32) / 255.0
-        wgt = a ** 3 + 1e-4 * (a > 0)                      # the photo whose middle is nearest dominates
         region, ws = canvas[y0:y1, x0:x1], wsum[y0:y1, x0:x1]
-        total = ws + wgt
-        hit = total > 0
-        blend = (region.astype(np.float32) * ws[:, :, None] + tile.astype(np.float32) * wgt[:, :, None])
-        region[hit] = np.clip(blend[hit] / total[hit][:, None], 0, 255).astype(np.uint8)
-        ws[:] = total
+        if depth == 0:
+            # bottom layer: photos share the ground between them; the one whose middle is nearest dominates
+            wgt = a ** 3 + 1e-4 * (a > 0)
+            total = ws + wgt
+            hit = total > 0
+            blend = (region.astype(np.float32) * ws[:, :, None] + tile.astype(np.float32) * wgt[:, :, None])
+            region[hit] = np.clip(blend[hit] / total[hit][:, None], 0, 255).astype(np.uint8)
+            ws[:] = total
+        else:
+            # a layer on top (zoom over colour): laid over whatever is beneath, fading in at its edges
+            hit = a > 0
+            over = tile.astype(np.float32) * a[:, :, None] + region.astype(np.float32) * (1.0 - a[:, :, None])
+            bare = hit & (ws <= 0)                         # nothing beneath: show the photo itself
+            over[bare] = tile[bare]
+            region[hit] = np.clip(over[hit], 0, 255).astype(np.uint8)
+            ws[hit] = np.maximum(ws[hit], a[hit])
     if progress:
         progress(len(photos), len(photos), "writing the file")
     if not (wsum > 0).any():
@@ -309,13 +341,15 @@ def export_ortho(store, workdir: Path, cfg: Config, lens: str = "colour", crs_co
 
     rgba = np.dstack([canvas[:, :, ::-1], np.where(wsum > 0, 255, 0).astype(np.uint8)])
     safe = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in workdir.name)
-    out_path = Path(out_path) if out_path else workdir / "exports" / f"{safe}_{lens}_epsg{crs.epsg}_{used * 100:.0f}cm.tif"
-    description = (f"pointersearch {lens} map of '{workdir.name}', {len(photos)} photos, about {used * 100:.1f} cm per pixel. "
+    out_path = Path(out_path) if out_path else workdir / "exports" / \
+        f"{safe}_{lens.replace('+', '-')}_epsg{crs.epsg}_{used * 100:.0f}cm.tif"
+    description = (f"pointersearch {LENS_LABEL[lens].lower()} map of '{workdir.name}', {len(photos)} photos, about {used * 100:.1f} cm per pixel. "
                    "Photos placed from aircraft GPS and lined up with each other; not a surveyed orthophoto.")
     write_geotiff(out_path, rgba, x_min, y_max, px, py, crs, description)
     return {"file": str(out_path), "name": out_path.name, "lens": lens, "crs": crs.label, "epsg": crs.epsg,
             "width": W, "height": H, "gsd_cm": round(used * 100, 1), "requested_gsd_cm": round(want * 100, 1),
             "coarsened": used > want * 1.02, "photos": len(photos), "missing_files": missing,
+            "layers": [sum(1 for _, _, d in photos if d == k) for k in range(len(layers))],
             "low_detail_photos": low_detail, "size_mb": round(out_path.stat().st_size / 1e6, 1),
             "extent": [x_min, y_min, x_min + W * px, y_max]}
 
@@ -339,8 +373,8 @@ class ExportJob:
 
     def start(self, lens: str, crs_code: str | None, gsd_m: float | None) -> dict:
         import threading
-        if lens not in LENS_SOURCES:
-            raise ExportError("lens must be colour or thermal")
+        if lens not in LENS_LAYERS:
+            raise ExportError("lens must be one of " + ", ".join(LENS_LAYERS))
         if gsd_m is not None and not (0.005 <= gsd_m <= 5.0):
             raise ExportError("pixel size must be between 0.5 cm and 5 m")
         with self._lock:

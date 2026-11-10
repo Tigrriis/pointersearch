@@ -35,7 +35,7 @@ class IngestRequest(BaseModel):
 
 
 class GeoTiffRequest(BaseModel):
-    lens: str = "colour"             # colour | thermal
+    lens: str = "colour"             # colour | thermal | zoom | colour+zoom
     crs: str | None = None           # mga | utm | latlon; None = the best fit for the place
     gsd_cm: float | None = None      # ground size of a pixel; None = the photos' own detail
 
