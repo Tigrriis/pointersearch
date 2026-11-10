@@ -49,6 +49,25 @@ def test_thermal_hotspot():
     assert 0.5 < c.area_m2 < 1.5
 
 
+def test_thermal_red_highlight_palette_ranks_red_as_hottest():
+    # DJI white-hot palettes that paint the hottest band red: red must beat white, not lose to grey
+    from pointersearch.detectors.thermal import heat_field
+    rng = np.random.default_rng(0)
+    base = np.clip(rng.normal(105, 2, (512, 640)), 0, 255).astype(np.uint8)
+    bgr = cv2.cvtColor(base, cv2.COLOR_GRAY2BGR)
+    bgr[100:110, 100:109] = (235, 235, 235)                 # warm: near white
+    bgr[300:310, 400:409] = (30, 30, 235)                   # hottest: painted red
+    bgr = cv2.imdecode(cv2.imencode(".jpg", bgr, [cv2.IMWRITE_JPEG_QUALITY, 90])[1], cv2.IMREAD_COLOR)
+    field = heat_field(bgr)
+    assert field[305, 404] > field[105, 104] > field[200, 200]
+    assert cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)[305, 404] < 105          # what plain grey would have seen
+    cands = ThermalDetector(ThermalConfig()).detect(bgr, gsd_m=0.1)
+    assert len(cands) == 2
+    assert abs(cands[0].px - 404) < 3 and abs(cands[0].py - 304.5) < 3    # the red one ranks first
+    assert abs(cands[1].px - 104) < 3
+    assert heat_field(base).dtype == np.float32 and heat_field(base).shape == base.shape
+
+
 def test_thermal_size_filter_rejects_large_warm_area():
     gray = np.full((512, 640), 105, np.uint8)
     gray[100:400, 100:500] = 200                 # sun-warmed slab, far bigger than a person

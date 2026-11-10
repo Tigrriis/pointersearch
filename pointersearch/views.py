@@ -27,8 +27,8 @@ from .config import Config
 from .georef import Georeferencer, rotation_cam_to_ned
 from .metadata import ImageMeta, read_image_meta
 
-LENS_ORDER = ["wide", "zoom", "thermal", "unknown"]
-LENS_LABEL = {"wide": "Wide", "zoom": "Zoom", "thermal": "Thermal", "unknown": "Photo"}
+LENS_ORDER = ["wide", "zoom", "thermal", "split", "unknown"]
+LENS_LABEL = {"wide": "Wide", "zoom": "Zoom", "thermal": "Thermal", "split": "Split", "unknown": "Photo"}
 VIEW_SIZE = 512
 @lru_cache(maxsize=512)
 def _meta(path: str, mtime: float) -> ImageMeta:
@@ -88,6 +88,15 @@ def views_for_candidate(store, cfg: Config, cand: dict) -> list[dict]:
         else:
             if not same_moment(primary["path"], img["path"]) or src is None:
                 continue
+            if lens == "split":
+                # the split-screen picture (thermal and visible side by side) is not one
+                # lens, so the whole picture is shown instead of a matched close-up
+                if Path(img["path"]).is_file():
+                    entry.update(whole=True, url=f"api/view/{img['id']}.jpg?whole=1")
+                else:
+                    entry.update(available=False, reason="the photo file was not found; is the card or folder connected?")
+                out.append(entry)
+                continue
             dst = meta_for(img["path"])
             if dst is None:
                 entry.update(available=False, reason="the photo file was not found; is the card or folder connected?")
@@ -137,6 +146,24 @@ def views_for_group(store, cfg: Config, group: dict, candidate_id: int | None = 
         if n >= 3:
             break
     return {"candidate_id": best_id, "views": best_views}
+
+
+def render_whole(image_path: str | Path, out_path: Path, size: int = 1024) -> bool:
+    """The whole picture, with any black bars trimmed off, scaled so its longer side
+    is ``size``. Split-screen pictures have bars above and below the two halves."""
+    image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+    if image is None:
+        return False
+    lit = image.max(axis=2) > 16
+    rows, cols = np.flatnonzero(lit.mean(axis=1) > 0.02), np.flatnonzero(lit.mean(axis=0) > 0.02)
+    if len(rows) > 8 and len(cols) > 8:
+        image = image[rows[0]:rows[-1] + 1, cols[0]:cols[-1] + 1]
+    h, w = image.shape[:2]
+    scale = min(1.0, size / max(h, w))
+    if scale < 1:
+        image = cv2.resize(image, (max(1, round(w * scale)), max(1, round(h * scale))), interpolation=cv2.INTER_AREA)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    return bool(cv2.imwrite(str(out_path), image, [cv2.IMWRITE_JPEG_QUALITY, 88]))
 
 
 def render_view(image_path: str | Path, px: float, py: float, win: int, bw: int, bh: int,

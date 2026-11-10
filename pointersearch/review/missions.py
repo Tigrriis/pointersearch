@@ -29,6 +29,19 @@ def require_local(request: Request):
         raise HTTPException(403, "this action is only available on the computer running pointersearch")
 
 
+def always_fresh(app: FastAPI):
+    """Make browsers re-check pages and scripts on every load, so an updated app is
+    never shown through a stale copy of its own pages."""
+
+    @app.middleware("http")
+    async def _fresh(request: Request, call_next):
+        response = await call_next(request)
+        kind = response.headers.get("content-type", "")
+        if "/static/" in request.url.path or kind.startswith("text/html"):
+            response.headers.setdefault("Cache-Control", "no-cache")
+        return response
+
+
 def allow_all(request: Request):
     """Guard for the hosted app, where every request has already passed the login check."""
 

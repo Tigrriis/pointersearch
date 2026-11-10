@@ -195,6 +195,11 @@ def test_ingest_job_processes_a_folder(mission, tmp_path):
     s = wait_for(job.status, {"done", "error"})
     assert s["added"] == 0 and s["skipped"] == n
 
+    # "search again" re-runs images already in the mission
+    job.start(str(mission["images"]), force=True)
+    s = wait_for(job.status, {"done", "error"})
+    assert s["added"] == n and "processed again" in s["message"]
+
     empty = tmp_path / "empty"; empty.mkdir()
     job.start(str(empty))
     assert "no JPEG" in wait_for(job.status, {"done"})["message"]

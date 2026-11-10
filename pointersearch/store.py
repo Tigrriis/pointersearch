@@ -114,6 +114,25 @@ class Store:
                   "extra": json.dumps(c.get("extra", {}))} for c in candidates],
             )
 
+    def clean_split_frames(self) -> dict:
+        """Missions processed before version 0.2 searched "_S" split-screen pictures as if
+        they were colour photos. Remove what that produced: undecided detections found in them
+        and their patches on the mosaic. Decisions a reviewer already made are kept."""
+        rows = self.conn.execute("SELECT id, path FROM images").fetchall()
+        ids = [r["id"] for r in rows if Path(r["path"]).stem.upper().endswith("_S")]
+        if not ids:
+            return {"frames": 0, "detections_removed": 0}
+        removed = 0
+        with self.conn:
+            for i in range(0, len(ids), 500):
+                chunk = ids[i:i + 500]
+                marks = ",".join("?" * len(chunk))
+                removed += self.conn.execute(
+                    f"DELETE FROM candidates WHERE status='pending' AND image_id IN ({marks})", chunk).rowcount
+                self.conn.execute(f"UPDATE images SET source='split', overlay_png=NULL, overlay_bounds=NULL, "
+                                  f"footprint=NULL WHERE id IN ({marks})", chunk)
+        return {"frames": len(ids), "detections_removed": removed}
+
     def get_image(self, image_id: int) -> dict | None:
         r = self.conn.execute("SELECT * FROM images WHERE id=?", (image_id,)).fetchone()
         return _image_row(r) if r else None

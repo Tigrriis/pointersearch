@@ -29,6 +29,13 @@ A mission is a folder inside the missions folder. Backing up or moving a mission
 is copying that folder. Photos are not copied into it; it remembers where they
 are, so keep the photo folder in place.
 
+## Which version is running
+
+The version number is shown in small text beside the name at the top of every
+page, for example `v0.2.0`. After updating, close the app's window and start it
+again. If there is no version number, you are looking at a copy from before
+0.2.0.
+
 ## Adding images
 
 On the review map press *Add images…*, choose the folder that holds the photos
@@ -41,6 +48,9 @@ On the review map press *Add images…*, choose the folder that holds the photos
 - *Keep watching this folder* carries on after the first pass and picks up new
   photos as they land, until you press *Stop*.
 - Adding the same folder again only processes photos that are new.
+- Tick *Search again images that are already in the mission* after an update
+  that changes how images are searched. Accept, follow-up and reject decisions
+  are kept; undecided detections are replaced.
 
 ## Looking at an object through each lens
 
@@ -52,6 +62,11 @@ between those lenses for the same moment:
   with a box around it. The dot marks the lens the object was found in.
 - A lens is crossed out when its frame did not contain the object, which is
   common for the zoom lens because its view is much narrower. Hover for the reason.
+- **Split.** If the aircraft also saved its split-screen picture (the `_S` file,
+  thermal and visible side by side), it gets a tab too and is shown whole. It is
+  for looking at only: it is not searched for objects and not put on the mosaic,
+  because it is two views in one picture.
+- If a shot has only one lens file, a note under the tabs' place says so.
 - **V** steps through the available lenses. Your choice is remembered, so if you
   prefer thermal, each object opens in thermal where it is available.
 - **F** and *full image* open the whole frame of the lens being shown.

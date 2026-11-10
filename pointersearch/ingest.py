@@ -34,7 +34,7 @@ class IngestJob:
         with self._lock:
             return dict(self._s)
 
-    def start(self, folder: str, watch: bool = False) -> dict:
+    def start(self, folder: str, watch: bool = False, force: bool = False) -> dict:
         path = Path(folder.strip().strip('"')).expanduser()
         if not folder.strip():
             raise IngestError("enter the folder that holds the images")
@@ -48,7 +48,7 @@ class IngestJob:
             self._stop.clear()
             self._s.update(state="running", folder=str(path), total=0, done=0, added=0, skipped=0,
                            current=None, message=None, watch=bool(watch))
-            self._thread = threading.Thread(target=self._run, args=(path, bool(watch)), daemon=True,
+            self._thread = threading.Thread(target=self._run, args=(path, bool(watch), bool(force)), daemon=True,
                                             name=f"ingest-{self.workdir.name}")
             self._thread.start()
         return self.status()
@@ -67,7 +67,7 @@ class IngestJob:
         with self._lock:
             self._s.update(kw)
 
-    def _run(self, folder: Path, watch: bool):
+    def _run(self, folder: Path, watch: bool, force: bool = False):
         pipeline = None
         try:
             pipeline = Pipeline(self.workdir)
@@ -80,7 +80,7 @@ class IngestJob:
                     return
                 self._set(current=f.name)
                 try:
-                    if pipeline.process_image(f):
+                    if pipeline.process_image(f, force=force):
                         added += 1
                     else:
                         skipped += 1
@@ -89,7 +89,8 @@ class IngestJob:
                     self._set(message=f"{f.name}: {exc}")
                 self._set(done=i + 1, added=added, skipped=skipped)
             if not watch:
-                msg = f"{added} image(s) added" + (f", {skipped} already imported or unusable" if skipped else "")
+                msg = (f"{added} image(s) {'processed again' if force else 'added'}"
+                       + (f", {skipped} already imported or unusable" if skipped else ""))
                 if not files:
                     msg = "no JPEG images found in that folder"
                 self._set(state="done", current=None, message=msg)

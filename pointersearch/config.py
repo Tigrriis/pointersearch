@@ -143,6 +143,10 @@ class Config:
     bright: BrightColourConfig = field(default_factory=BrightColourConfig)
     thermal: ThermalConfig = field(default_factory=ThermalConfig)
     mosaic: MosaicConfig = field(default_factory=MosaicConfig)
+    # "_S" files are split-screen pictures (thermal and visible side by side), not a lens.
+    # "view": keep them to look at beside the lens frames, without searching or mapping them.
+    # "ignore": skip them. "process": treat them as ordinary photos (as before version 0.2).
+    split_frames: str = "view"
     group_radius_m: float = 3.0          # sightings closer than this are one object
     # Angular offset of each lens from the wide lens, degrees [right, down]. Used when
     # showing the same object through another lens; tune if the marker sits off the object.

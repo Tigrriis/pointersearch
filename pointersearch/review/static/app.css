@@ -115,7 +115,7 @@ body.home { overflow:auto; display:block; }
 /* ---- add images ---- */
 dialog .path-row { display:flex; gap:8px; margin:12px 0 8px; }
 dialog .path-row input { flex:1; min-width:0; background:#12161a; color:var(--text); border:1px solid #3a444e; border-radius:4px; padding:6px 8px; font:inherit; }
-dialog label.check { display:flex; gap:8px; align-items:center; color:var(--text); cursor:pointer; }
+dialog label.check { display:flex; gap:8px; align-items:center; color:var(--text); cursor:pointer; margin-top:6px; }
 progress { width:100%; height:10px; accent-color:var(--follow); }
 #i-status { font-size:13px; margin-top:10px; min-height:3.2em; }
 .empty { position:absolute; z-index:500; left:50%; bottom:28px; transform:translateX(-50%); background:var(--panel);
@@ -132,8 +132,12 @@ progress { width:100%; height:10px; accent-color:var(--follow); }
 .leaflet-popup-content .btn { display:inline-block; margin:6px 6px 0 0; color:var(--text); }
 .leaflet-popup-content .sub { color:var(--muted); }
 
+.brand .ver { font-size:11px; font-weight:400; color:var(--muted); opacity:.7; margin-left:6px; }
+.lens-note { color:var(--muted); font-size:12px; margin:0 0 6px; }
+
 /* ---- lens switch ---- */
 .lens-tabs { display:flex; gap:0; margin-bottom:6px; border:1px solid #3a444e; border-radius:6px; overflow:hidden; }
+.lens-tabs:has(.lens-note) { border:0; }
 .lens-tabs:empty { display:none; }
 .lens-tabs button { flex:1; padding:6px 4px; border:0; border-right:1px solid #3a444e; background:#2b333b; color:var(--muted);
   font:inherit; font-size:13px; font-weight:600; cursor:pointer; }

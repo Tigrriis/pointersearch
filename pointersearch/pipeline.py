@@ -64,6 +64,24 @@ class Pipeline:
                                      "status": "error", "error": repr(exc)})
             return False
 
+        split = meta.source == "split" and self.cfg.split_frames != "process"
+        if split and self.cfg.split_frames == "ignore":
+            self.store.upsert_image({"path": str(path), "mtime": path.stat().st_mtime, "source": "split",
+                                     "status": "skipped", "error": "split-screen picture (split_frames = ignore)"})
+            return False
+        if split:
+            # kept so the reviewer can look at it beside the lens frames; not searched, not mapped
+            image_id = self.store.upsert_image({
+                "path": str(path), "mtime": path.stat().st_mtime, "source": "split",
+                "lat": meta.lat, "lon": meta.lon, "rel_alt": meta.rel_alt,
+                "gimbal_yaw": meta.gimbal_yaw, "gimbal_pitch": meta.gimbal_pitch, "gimbal_roll": meta.gimbal_roll,
+                "width": meta.width, "height": meta.height, "gsd_m": None, "captured_at": meta.captured_at,
+                "footprint": None, "overlay_png": None, "overlay_bounds": None, "status": "ok", "error": None,
+                "capture_key": capture_key(path) or f"single|{path}"})
+            self.store.replace_candidates(image_id, [])
+            log.info("%s: split-screen picture, kept for viewing", path.name)
+            return True
+
         image = cv2.imread(str(path), cv2.IMREAD_COLOR)
         if image is None:
             self.store.upsert_image({"path": str(path), "mtime": path.stat().st_mtime,

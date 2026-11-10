@@ -19,15 +19,17 @@ from ..ingest import IngestError, IngestJob, pick_folder
 from ..mission import MissionError, default_home, plan_mission, points_from_store
 from ..saved_routes import list_routes
 from ..store import Store
-from ..views import render_view, views_for_group
+from .. import __version__
+from ..views import render_view, render_whole, views_for_group
 from ..wpml import build_kmz
-from .missions import STATIC_DIR, require_local  # noqa: F401  (re-exported)
+from .missions import STATIC_DIR, always_fresh, require_local  # noqa: F401  (re-exported)
 from .planner_api import add_planner_api, route_defaults
 
 
 class IngestRequest(BaseModel):
     folder: str
     watch: bool = False
+    force: bool = False          # process again images that are already in the mission
 
 
 class Decision(BaseModel):
@@ -39,9 +41,15 @@ def create_app(workdir: str | Path, tiles_dir: str | Path | None = None, mission
     workdir = Path(workdir).resolve()
     store = Store(workdir)
     cfg = Config.load(workdir)
+    if cfg.split_frames != "process":
+        cleaned = store.clean_split_frames()            # split-screen pictures searched by older versions
+    else:
+        cleaned = {"frames": 0, "detections_removed": 0}
     store.regroup(cfg.group_radius_m)   # missions processed before grouping existed
     app = FastAPI(title="pointersearch review", docs_url=None, redoc_url=None)
     app.state.store = store
+    app.state.cleaned = cleaned
+    always_fresh(app)
     ingest = IngestJob(workdir)
     app.state.ingest = ingest
 
@@ -53,6 +61,7 @@ def create_app(workdir: str | Path, tiles_dir: str | Path | None = None, mission
     def summary():
         s = store.summary()
         s["mission"] = mission_name or workdir.name
+        s["version"] = __version__
         s["routes"] = len(list_routes(workdir))
         s["followup"] = {"transit_height_m": cfg.followup.transit_height_m,
                          "inspect_height_m": cfg.followup.inspect_height_m,
@@ -110,10 +119,16 @@ def create_app(workdir: str | Path, tiles_dir: str | Path | None = None, mission
         return out
 
     @app.get("/api/view/{image_id}.jpg")
-    def lens_view(image_id: int, px: float, py: float, win: int = 256, bw: int = 12, bh: int = 12):
+    def lens_view(image_id: int, px: float = 0, py: float = 0, win: int = 256, bw: int = 12, bh: int = 12,
+                  whole: bool = False):
         img = store.get_image(image_id)
         if img is None or not Path(img["path"]).is_file():
             raise HTTPException(404, "that photo is not available; is the card or folder still connected?")
+        if whole:
+            out = workdir / "views" / f"{image_id}_whole.jpg"
+            if not out.is_file() and not render_whole(img["path"], out):
+                raise HTTPException(500, "could not read that photo")
+            return FileResponse(out, headers={"Cache-Control": "max-age=3600"})
         if not (0 <= px < (img["width"] or 1e9) and 0 <= py < (img["height"] or 1e9)):
             raise HTTPException(400, "point is outside the photo")
         win, bw, bh = max(32, min(2048, win)), max(1, min(4096, bw)), max(1, min(4096, bh))
@@ -173,7 +188,7 @@ def create_app(workdir: str | Path, tiles_dir: str | Path | None = None, mission
     def ingest_start(body: IngestRequest, request: Request):
         require_local(request)
         try:
-            return ingest.start(body.folder, body.watch)
+            return ingest.start(body.folder, body.watch, body.force)
         except IngestError as exc:
             running = "already running" in str(exc)
             raise HTTPException(409 if running else 400, str(exc))

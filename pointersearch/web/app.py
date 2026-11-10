@@ -141,6 +141,8 @@ def create_web_app(data_dir: str | Path, admin_email: str | None = None,
         response.headers.setdefault("Referrer-Policy", "same-origin")
         if _is_api(path) or path in ("/", "/account", "/users", "/login"):
             response.headers.setdefault("Cache-Control", "no-store")
+        elif "/static/" in path or response.headers.get("content-type", "").startswith("text/html"):
+            response.headers.setdefault("Cache-Control", "no-cache")     # an update is never hidden by a stale page
         return response
 
     def me(request: Request) -> dict:

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pointersearch"
-version = "0.1.0"
+version = "0.2.0"
 description = "Ground-station toolkit for drone search and rescue imagery: quick mosaics, anomaly detection and candidate review for the DJI Matrice 4T."
 readme = "README.md"
 requires-python = ">=3.10"

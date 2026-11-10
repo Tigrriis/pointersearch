@@ -5,8 +5,9 @@ Two modes:
 * **Relative (default).** Works on the 8-bit thermal JPEG as rendered by the
   aircraft. The local background is estimated with a wide Gaussian blur and
   pixels that stand well above it (in robust sigma units) and sit in the hottest
-  percentile of the frame become candidates. Use the *White Hot* palette on the
-  aircraft so brightness is monotonic in temperature.
+  percentile of the frame become candidates. Use a palette where hotter is
+  brighter: *White Hot*, or one of the white-hot palettes that paints the hottest
+  band red (handled by :func:`heat_field`). Rainbow-style palettes will not work.
 
 * **Radiometric (optional).** If ``thermal.dirp_library`` in the config points at
   DJI's Thermal SDK shared library (``libdirp``), the R-JPEG is decoded to a
@@ -64,6 +65,23 @@ class DirpReader:
             self.lib.dirp_destroy(handle)
 
 
+def heat_field(bgr: np.ndarray) -> np.ndarray:
+    """Relative heat per pixel from a rendered thermal picture: brighter means hotter.
+
+    Several DJI palettes are white-hot greyscale with the hottest band painted red. A
+    plain greyscale conversion turns that red into a mid grey, ranking the hottest
+    pixels below merely warm ones, so strongly red pixels are lifted above white.
+    """
+    if bgr.ndim == 2:
+        return bgr.astype(np.float32)
+    field = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    b, g, r = (bgr[:, :, i].astype(np.int16) for i in range(3))
+    excess = r - np.maximum(g, b)                      # how much redder than grey
+    red = (r > 140) & (excess > 50)
+    field[red] = 255.0 + excess[red] * 0.2             # hotter than the whitest grey
+    return field
+
+
 class ThermalDetector:
     name = "thermal"
 
@@ -83,8 +101,7 @@ class ThermalDetector:
             field = temps
             scale = 1.0
         else:
-            gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY) if bgr.ndim == 3 else bgr
-            small, scale = downscale(gray, 1280)
+            small, scale = downscale(heat_field(bgr), 1280)
             field = small.astype(np.float32)
 
         sigma = self.cfg.background_sigma_px

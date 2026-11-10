@@ -22,7 +22,8 @@ from .. import __version__
 from ..config import Config
 from ..saved_routes import list_routes
 from ..store import Store
-from .missions import NAME_RE, STATIC_DIR, MissionDispatcher, clean_name, is_mission, require_local
+from .missions import (NAME_RE, STATIC_DIR, MissionDispatcher, always_fresh, clean_name, is_mission,
+                       require_local)
 from .server import create_app
 
 class NewMission(BaseModel):
@@ -55,6 +56,7 @@ def create_hub(root: str | Path, tiles_dir: str | Path | None = None) -> FastAPI
     app = FastAPI(title="pointersearch", docs_url=None, redoc_url=None)
     missions = MissionDispatcher(root, lambda path, name: create_app(path, tiles_dir, name))
     app.state.missions = missions
+    always_fresh(app)
 
     @app.get("/")
     def home():

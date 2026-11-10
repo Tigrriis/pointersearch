@@ -30,6 +30,7 @@
     if (s.hosted) $('review-link').hidden = true;        // the hosted planner has no imagery to review
     $('mission').textContent = `${s.mission} · route planner`;
     document.title = `${s.mission} · route planner`;
+    if (s.version) $('ver').textContent = 'v' + s.version;
     const bases = {};
     if (s.tiles) bases['Offline tiles'] = L.tileLayer('tiles/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 22 });
     Object.assign(bases, online);

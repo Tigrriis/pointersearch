@@ -10,7 +10,7 @@
 <body>
 <header>
   <a class="btn" id="home-link" href="/" hidden title="back to the list of missions">‹ Missions</a>
-  <div class="brand">pointersearch <span id="mission"></span></div>
+  <div class="brand">pointersearch <span id="mission"></span> <span class="ver" id="ver"></span></div>
   <div class="stats" id="stats"></div>
   <div class="controls">
     <label><input type="checkbox" id="f-rx" checked> colour (RX)</label>
@@ -55,6 +55,7 @@
       <button class="btn" type="button" id="i-browse">Browse…</button>
     </div>
     <label class="check"><input type="checkbox" id="i-watch"> Keep watching this folder for new images</label>
+    <label class="check" title="use after an update that changes how images are searched; your accept, follow-up and reject decisions are kept"><input type="checkbox" id="i-force"> Search again images that are already in the mission</label>
     <div id="i-status"></div>
     <div class="row end">
       <button class="btn" value="cancel">Close</button>

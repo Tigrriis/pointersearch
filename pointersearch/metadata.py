@@ -36,7 +36,7 @@ _IFD_GPS = 0x8825
 # Filename suffix convention used by DJI aircraft:
 # DJI_20250101120000_0001_W.JPG  -> W wide, Z zoom/tele, T thermal, V visible (enterprise)
 # DJI_20250101120000_0001_D.JPG  -> D default camera (Mini / Air / Mavic consumer lines)
-_SUFFIX_SOURCE = {"W": "wide", "V": "wide", "D": "wide", "Z": "zoom", "T": "thermal", "S": "screen"}
+_SUFFIX_SOURCE = {"W": "wide", "V": "wide", "D": "wide", "Z": "zoom", "T": "thermal", "S": "split"}
 
 
 class MetadataError(ValueError):
@@ -108,6 +108,11 @@ def _dms_to_deg(dms, ref) -> Optional[float]:
 
 
 def _source_from_name(path: Path, dji: dict) -> str:
+    # "_S" is the split-screen picture: thermal and visible side by side in one image,
+    # saved beside the real lens files. It is not a single lens and its metadata can name
+    # any of them, so the file name decides.
+    if re.search(r"_S$", path.stem.upper()):
+        return "split"
     src = (dji.get("ImageSource") or "").lower()
     if "infrared" in src or "thermal" in src or "ir" == src:
         return "thermal"

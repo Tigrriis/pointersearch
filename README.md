@@ -150,7 +150,9 @@ pointersearch merge missions/2025-06-01-grose-valley
 
 * Gimbal pitch -90 (nadir). Frames flatter than 35 degrees are not mosaicked.
 * Wide camera stills, timed or distance interval, 20-30 % side overlap is enough.
-* Thermal palette **White Hot** so brightness is monotonic with temperature.
+* Thermal palette where hotter is brighter: **White Hot**, or a white-hot palette
+  that paints the hottest band red. Rainbow-style palettes will not work.
+* The split-screen `_S` pictures are kept for viewing but not searched.
 * Altitude by target: 60 m for dogs, 80-100 m for people. See the GSD table in
   [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 * Dawn, dusk or night for thermal. A deceased person at ambient temperature will

@@ -78,6 +78,7 @@
 
   fetch('/api/app').then(r => r.json()).then(a => {
     hosted = !!a.hosted;
+    if (a.version) $('ver').textContent = 'v' + a.version;
     if (hosted) {
       psUserMenu(a.user);
       $('new-hint').textContent = 'A mission holds the planned routes for one search. Plan here, download the KMZ for the controller, and process the images on the laptop app.';

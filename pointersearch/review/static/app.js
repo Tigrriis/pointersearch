@@ -49,6 +49,7 @@
     drawSavedRoutes(routes);
     $('mission').textContent = summary.mission || '';
     state.imageCount = summary.images_ok || 0;
+    if (summary.version) $('ver').textContent = 'v' + summary.version;
     $('empty').hidden = summary.images > 0 || importState.busy;
     const c = summary.candidates || {};
     const g = summary.groups || {};
@@ -211,9 +212,12 @@
   }
   function lensTabs(c, view) {
     const hit = cachedViews(c);
-    if (!view || !hit || hit.views.length < 2) return '';
+    if (!hit) return '';
+    // say so when there is nothing to switch to, so its absence is not a puzzle
+    if (hit.views.length < 2) return '<div class="lens-note">Only this lens was saved for this shot.</div>';
+    if (!view) return '';
     return hit.views.map(v => `<button data-lens="${v.lens}" class="${v === view ? 'on' : ''}" ${v.available ? '' : 'disabled'}
-      title="${v.available ? (v.primary ? 'the lens this object was found in' : 'the same moment through the ' + v.label.toLowerCase() + ' lens') : v.reason}">${v.label}${v.primary ? ' <span class="dot">●</span>' : ''}</button>`).join('');
+      title="${v.available ? (v.primary ? 'the lens this object was found in' : v.whole ? 'the split-screen picture saved with this shot: thermal and visible side by side (whole picture)' : 'the same moment through the ' + v.label.toLowerCase() + ' lens') : v.reason}">${v.label}${v.primary ? ' <span class="dot">●</span>' : ''}</button>`).join('');
   }
   async function loadViews(c) {
     if (cachedViews(c)) return;
@@ -342,7 +346,7 @@
     const wasBusy = importState.busy;
     importState.busy = busy;
     $('i-start').hidden = busy; $('i-stop').hidden = !busy;
-    $('i-folder').disabled = $('i-watch').disabled = $('i-browse').disabled = busy;
+    $('i-folder').disabled = $('i-watch').disabled = $('i-force').disabled = $('i-browse').disabled = busy;
     const chip = $('import-chip');
     chip.hidden = !busy;
     chip.textContent = st.state === 'watching' ? 'watching for images' : `importing ${st.done}/${st.total}`;
@@ -383,10 +387,12 @@
   $('i-start').addEventListener('click', async () => {
     const folder = $('i-folder').value.trim();
     const r = await fetch('api/ingest', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ folder, watch: $('i-watch').checked }) });
+      body: JSON.stringify({ folder, watch: $('i-watch').checked, force: $('i-force').checked }) });
     const b = await r.json().catch(() => ({}));
     if (!r.ok) { $('i-status').innerHTML = `<div class="err">${typeof b.detail === 'string' ? b.detail : 'Could not start the import.'}</div>`; return; }
     try { localStorage.setItem('ps-folder', folder); } catch (e) {}
+    $('i-force').checked = false;
+    state.views.clear();                          // close-ups depend on what was found
     showImport(b);
   });
   $('i-stop').addEventListener('click', async () => { showImport(await fetch('api/ingest/stop', { method: 'POST' }).then(r => r.json())); });

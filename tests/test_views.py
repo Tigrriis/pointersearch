@@ -195,3 +195,91 @@ def test_older_missions_gain_capture_keys_on_open(flown, tmp_path):
     store = Store(wd)                                              # opening migrates it
     img = next(i for i in store.list_images() if i["path"].endswith("_0001_W.JPG"))
     assert {i["source"] for i in store.siblings(img)} == {"wide", "zoom", "thermal"}
+
+
+# ---- "_S" live-view captures ---------------------------------------------------
+def shoot_split(folder, seq, cam_ne, stamp="20250601063000"):
+    """A split-screen picture as the aircraft saves beside the lens files: thermal (grey with a
+    red highlight) beside visible. Deliberately colourful, to tempt the colour detectors."""
+    img = np.full((512, 640, 3), 90, np.uint8)
+    img += np.random.default_rng(seq).integers(0, 25, img.shape, dtype=np.uint8)
+    img[250:262, 312:320] = (20, 20, 235)                      # red isotherm blob, about 2 x 1.4 m on the ground
+    lat, lon = FRAME.to_latlon(*cam_ne)
+    xmp = XMP_TEMPLATE.format(lat=lat, lon=lon, abs_alt=480, rel_alt=80.0, roll=0.0, yaw=0.0, pitch=-90.0,
+                              source="WideCamera")              # metadata can name any lens
+    p = folder / f"DJI_{stamp}_{seq:04d}_S.JPG"
+    write_jpeg_with_xmp(p, img, xmp, 24.0)
+    return p
+
+
+def test_split_screen_pictures_are_kept_for_viewing_but_not_searched(tmp_path):
+    from pointersearch.metadata import read_image_meta
+    img = tmp_path / "DCIM"
+    files = shoot(img, 1, (4.0, -6.0), lenses="WT")
+    s = shoot_split(img, 1, (4.0, -6.0))
+    assert read_image_meta(s).source == "split"                # the file name wins over the metadata
+    wd = tmp_path / "m"; wd.mkdir(); Config().save(wd)
+    p = Pipeline(wd)
+    assert p.process_path(img) == 3
+    assert not [c for c in p.store.list_candidates() if c["image_path"].endswith("_S.JPG")]
+    row = next(i for i in p.store.list_images() if i["path"].endswith("_S.JPG"))
+    assert row["source"] == "split" and row["overlay_png"] is None and row["status"] == "ok"
+    assert len(p.store.overlays()) == 2                         # not on the mosaic
+
+    views = views_for_candidate(p.store, p.cfg, best_in(p.store, files["W"]))
+    assert [v["lens"] for v in views] == ["wide", "thermal", "split"]
+    split_view = views[2]
+    assert split_view["available"] and split_view["whole"] and split_view["label"] == "Split"
+    c = TestClient(create_app(wd))
+    r = c.get("/" + split_view["url"])
+    pic = cv2.imdecode(np.frombuffer(r.content, np.uint8), cv2.IMREAD_COLOR)
+    assert r.status_code == 200 and pic.shape == (512, 640, 3)  # the whole picture, not a close-up
+    assert c.get("/api/summary").json()["version"]
+
+    # "ignore" leaves them out altogether
+    wd2 = tmp_path / "m2"; wd2.mkdir()
+    cfg = Config(); cfg.split_frames = "ignore"; cfg.save(wd2)
+    p2 = Pipeline(wd2)
+    assert p2.process_path(img) == 2
+    assert [v["lens"] for v in views_for_candidate(p2.store, p2.cfg, best_in(p2.store, files["W"]))] == ["wide", "thermal"]
+
+
+def test_missions_from_older_versions_are_cleaned_when_opened(tmp_path):
+    img = tmp_path / "DCIM"
+    shoot(img, 1, (4.0, -6.0), lenses="WT")
+    s = shoot_split(img, 1, (4.0, -6.0))
+    s2 = shoot_split(img, 2, (30.0, 30.0))
+    wd = tmp_path / "m"; wd.mkdir()
+    old = Config(); old.split_frames = "process"; old.save(wd)          # how versions before 0.2 behaved
+    p = Pipeline(wd)
+    p.process_path(img)
+    junk = [c for c in p.store.list_candidates() if c["image_path"].endswith("_S.JPG")]
+    assert len(junk) >= 2, "the colour detectors should have fired on the red highlight"
+    kept = junk[0]
+    p.store.set_decision(kept["id"], "accepted")                         # a reviewer's decision
+    real_before = len([c for c in p.store.list_candidates() if not c["image_path"].endswith("_S.JPG")])
+    assert any(i["overlay_png"] for i in p.store.list_images() if i["path"].endswith("_S.JPG"))
+    p.store.close()
+
+    Config().save(wd)                                                     # the updated app's default
+    app = create_app(wd)
+    assert app.state.cleaned == {"frames": 2, "detections_removed": len(junk) - 1}
+    store = app.state.store
+    left = [c for c in store.list_candidates() if c["image_path"].endswith("_S.JPG")]
+    assert [c["id"] for c in left] == [kept["id"]] and left[0]["status"] == "accepted"
+    assert len([c for c in store.list_candidates() if not c["image_path"].endswith("_S.JPG")]) == real_before
+    for i in store.list_images():
+        if i["path"].endswith("_S.JPG"):
+            assert i["source"] == "split" and i["overlay_png"] is None
+    assert create_app(wd).state.cleaned["detections_removed"] == 0        # nothing more to do next time
+
+
+def test_pages_and_scripts_are_always_rechecked_by_the_browser(tmp_path):
+    from pointersearch.review.hub import create_hub
+    hub = TestClient(create_hub(tmp_path))
+    assert hub.get("/").headers["cache-control"] == "no-cache"
+    assert hub.get("/static/app.js").headers["cache-control"] == "no-cache"
+    url = hub.post("/api/missions", json={"name": "A"}).json()["url"]
+    assert hub.get(url).headers["cache-control"] == "no-cache"
+    assert hub.get(url + "plan").headers["cache-control"] == "no-cache"
+    assert hub.get("/api/app").json()["version"] == hub.get(url + "api/summary").json()["version"]

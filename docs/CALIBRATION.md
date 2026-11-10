@@ -17,6 +17,16 @@ Run on a real mission with the review map open, list sorted by score.
 Record results per terrain type (worksite, pasture, dry scrub, bush) in this
 file so defaults can be chosen per mission.
 
+## Notes from the first Matrice 4T flight (Lucaston)
+
+- `_S` files are split-screen pictures (thermal left, visible right, black bars
+  above and below). Before 0.2.0 they were searched as colour photos and produced
+  false objects; now they are view-only.
+- Thermal frames are 1280 x 1024 and use a white-hot palette with the hottest
+  band in red. Before 0.2.0 red was read as mid grey, so the hottest spots were
+  under-ranked. Daytime frames light up sun-warmed dead branches; expect many
+  thermal candidates in daylight.
+
 ## Results
 
 _None yet._
