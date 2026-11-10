@@ -39,6 +39,9 @@ listed at the top of the panel:
 - **Open** loads one back into the planner to change points or settings. Saving
   again under the same name updates it; changing the name saves a copy.
 - **KMZ** downloads the file for Pilot 2 without opening the route.
+- **File** downloads the editable route file, and **Import file…** adds route
+  files to this mission. That is how routes move between missions and between
+  the hosted planner and the laptop app.
 - **✕** deletes it, after a confirmation.
 
 Saved routes also appear on the review map as violet lines, drawn over the

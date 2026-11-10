@@ -32,7 +32,19 @@ Use cases: missing persons (alive or deceased), lost dogs and other animals.
    route for DJI Pilot 2 that revisits each one at a lower height
    (see [docs/FOLLOWUP_MISSIONS.md](docs/FOLLOWUP_MISSIONS.md)).
 
-## Start the app
+## Two parts
+
+- **Hosted planner** - logins, missions, route planning and KMZ export, reached
+  from a tablet or any browser. Deployed to Render from `render.yaml`. See
+  [docs/WEB_APP.md](docs/WEB_APP.md).
+- **Laptop app** - image processing, the review map and follow-up missions, fully
+  offline at the search base. It also contains the planner, for days with no
+  coverage.
+
+Routes move between the two as small route files (File / Import file… in the
+planner).
+
+## Start the laptop app
 
 **Windows:** double-click `PointerSearch.bat` in this folder. The first run sets
 itself up (needs internet once); after that it opens the start screen in your

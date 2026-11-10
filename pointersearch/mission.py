@@ -15,7 +15,7 @@ import math
 from dataclasses import dataclass, field
 
 from .config import FlightConfig, FollowupConfig
-from .georef import LocalFrame
+from .geo import LocalFrame
 from .wpml import ActionGroup, WpmlRoute, WpmlWaypoint, gimbal_rotate, hover, take_photo
 
 MIN_STACK_SEPARATION_M = 1.0   # below this, transit and inspection are treated as one height

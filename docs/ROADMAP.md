@@ -20,6 +20,12 @@
 - Planner: take-off point for route ordering and full time estimate, split a large area
   across batteries.
 - [x] Saved routes shown on the review map
+- [x] Hosted planner with individual logins (Render blueprint); route files move between it
+  and the laptop app
+- Hosted planner: private missions or per-mission permissions, password reset by email,
+  two-step sign-in.
+- Sync button on the laptop to push findings (candidates, thumbnails, reduced mosaic) to the
+  hosted app for remote review.
 - Terrain-aware follow-up heights from a DEM.
 - Aircraft track and searched-area coverage layer from frame footprints.
 

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Account · pointersearch</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="home">
+<header>
+  <a class="btn" href="/" id="back">‹ Missions</a>
+  <div class="brand">pointersearch <span>your account</span></div>
+  <div class="controls" id="user-menu"></div>
+</header>
+<div class="home-wrap narrow">
+  <div class="card notice" id="first" hidden><b>Choose your own password to continue.</b> The one you were given was temporary.</div>
+  <form class="card" id="name-form" style="margin-bottom:12px">
+    <h2>Your name</h2>
+    <p class="hint">Shown beside the missions and routes you create.</p>
+    <label>Name <input type="text" id="name" maxlength="80" required autocomplete="name"></label>
+    <div class="ok" id="name-ok" role="status"></div>
+    <button class="btn" type="submit">Save name</button>
+  </form>
+  <form class="card" id="form">
+    <h2>Change password</h2>
+    <p class="hint" id="who"></p>
+    <input type="text" id="uname" autocomplete="username" hidden>
+    <label>Current password <input type="password" id="current" autocomplete="current-password" required></label>
+    <label>New password <input type="password" id="new" autocomplete="new-password" required minlength="10"></label>
+    <label>New password again <input type="password" id="again" autocomplete="new-password" required minlength="10"></label>
+    <div class="err" id="err" role="alert"></div>
+    <div class="ok" id="ok" role="status"></div>
+    <button class="btn primary" type="submit">Change password</button>
+    <p class="hint">At least 10 characters. A few unrelated words is easier to remember and harder to guess than a short complicated one.</p>
+  </form>
+</div>
+<script src="/static/session.js"></script>
+<script>
+(async function () {
+  const $ = id => document.getElementById(id);
+  const first = new URLSearchParams(location.search).has('first');
+  const me = await fetch('/api/me').then(r => r.json());
+  $('who').textContent = `Signed in as ${me.name} (${me.email}).`;
+  $('uname').value = me.email;
+  $('name').value = me.name;
+  $('name-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const r = await fetch('/api/account/name', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: $('name').value }) });
+    const b = await r.json().catch(() => ({}));
+    $('name-ok').textContent = r.ok ? 'Name saved.' : '';
+    if (r.ok) { me.name = b.name; $('who').textContent = `Signed in as ${me.name} (${me.email}).`; if (!me.must_change) psUserMenu(me); }
+  });
+  if (me.must_change) { $('first').hidden = false; $('back').hidden = true; } else psUserMenu(me);
+  $('form').addEventListener('submit', async e => {
+    e.preventDefault();
+    $('err').textContent = ''; $('ok').textContent = '';
+    if ($('new').value !== $('again').value) { $('err').textContent = 'The two new passwords do not match.'; return; }
+    const r = await fetch('/api/account/password', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ current: $('current').value, new: $('new').value }) });
+    const b = await r.json().catch(() => ({}));
+    if (!r.ok) { $('err').textContent = typeof b.detail === 'string' ? b.detail.charAt(0).toUpperCase() + b.detail.slice(1) + '.' : 'Could not change the password.'; return; }
+    if (first || me.must_change) { location.href = '/'; return; }
+    $('form').reset(); $('uname').value = me.email;
+    $('ok').textContent = 'Password changed. Other devices signed in as you have been signed out.';
+  });
+})();
+</script>
+</body>
+</html>

@@ -27,6 +27,7 @@
 
   async function init() {
     const s = await fetch('api/summary').then(r => r.json());
+    if (s.hosted) $('review-link').hidden = true;        // the hosted planner has no imagery to review
     $('mission').textContent = `${s.mission} · route planner`;
     document.title = `${s.mission} · route planner`;
     const bases = {};
@@ -125,7 +126,8 @@
       m.on('drag', e => { state.pts[i] = [e.latlng.lat, e.latlng.lng]; touched(); drawShape(); schedule(); });
       m.on('dragend', () => { save(); schedule(0); });
       m.on('contextmenu', () => { state.pts.splice(i, 1); redraw(); });
-      m.on('click', () => {});          // swallow so a click on a vertex does not add a point
+      // tap or click a point for a delete button (touch screens have no right-click)
+      m.bindPopup(`<button class="btn" data-del="${i}">Delete point ${i + 1}</button>`, { closeButton: false, offset: [0, -6] });
       return m.addTo(vertexLayer);
     });
     drawShape();
@@ -151,6 +153,10 @@
     $('map').style.cursor = far ? 'grab' : '';
   }
   map.on('zoomend', zoomHint);
+  map.on('popupopen', e => {
+    const b = e.popup.getElement().querySelector('button[data-del]');
+    if (b) b.onclick = () => { map.closePopup(); state.pts.splice(+b.dataset.del, 1); redraw(); };
+  });
   map.on('click', e => {
     if (map.getZoom() < MIN_DRAW_ZOOM) { zoomHint(); return; }       // avoid continent-sized routes
     state.pts.push([e.latlng.lat, e.latlng.lng]); redraw();
@@ -268,6 +274,7 @@
         <div class="r-main"><div class="r-name" title="${esc(r.name)}">${esc(r.name)}</div><div class="r-sub">${sub}</div></div>
         <button class="btn" data-act="open">Open</button>
         <a class="btn" href="api/routes/${r.id}/kmz" download title="download the KMZ for DJI Pilot 2">KMZ</a>
+        <a class="btn" href="api/routes/${r.id}?download=1" download title="download the editable route file, to import into another mission or the laptop app">File</a>
         <button class="btn" data-act="delete" title="delete this saved route">✕</button></li>`;
     }).join('') : '<li class="hint">No saved routes yet.</li>';
   }
@@ -338,6 +345,28 @@
     redraw(true); state.dirty = false; save(); loadSaved();
   };
   $('save-btn').onclick = saveRoute;
+
+  // ---- import route files -------------------------------------------------
+  $('import-btn').onclick = () => $('import-file').click();
+  $('import-file').addEventListener('change', async e => {
+    const done = [], failed = [];
+    for (const file of e.target.files) {
+      let route;
+      try { route = JSON.parse(await file.text()); } catch (err) { failed.push(`${file.name}: not a route file`); continue; }
+      const post = overwrite => fetch('api/routes/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ route, overwrite }) });
+      let r = await post(false);
+      if (r.status === 409) {
+        if (!confirm(`A route called "${route.name}" is already saved in this mission. Replace it with the imported one?`)) continue;
+        r = await post(true);
+      }
+      const b = await r.json().catch(() => ({}));
+      if (r.ok) done.push(b.name); else failed.push(`${file.name}: ${typeof b.detail === 'string' ? b.detail : 'could not be imported'}`);
+    }
+    e.target.value = '';
+    await loadSaved();
+    $('save-note').textContent = done.length ? `Imported ${done.map(n => `"${n}"`).join(', ')}.` : '';
+    if (failed.length) $('result').innerHTML = failed.map(f => `<div class="err">${esc(f)}</div>`).join('');
+  });
   $('dl-btn').onclick = download;
   $('fit-btn').onclick = fit;
   FIELDS.concat(CHECKS).forEach(id => $(id).addEventListener(id === 'p-name' ? 'change' : 'input', () => { touched(); syncInputs(); save(); schedule(); }));

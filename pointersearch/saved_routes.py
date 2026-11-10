@@ -72,7 +72,7 @@ def list_routes(workdir: Path) -> list[dict]:
         for p in sorted(d.glob("*.json")):
             r = _read(p)
             if r is not None and _ID_RE.match(p.stem):
-                out.append({k: r.get(k) for k in ("id", "name", "mode", "created", "updated", "summary")}
+                out.append({k: r.get(k) for k in ("id", "name", "mode", "created", "updated", "summary", "updated_by")}
                            | {"n_points": len(r["points"])})
     out.sort(key=lambda r: r.get("updated") or "", reverse=True)
     return out
@@ -84,7 +84,7 @@ def load_route(workdir: Path, route_id: str) -> dict | None:
 
 
 def save_route(workdir: Path, name: str, mode: str, points: list, settings: dict,
-               summary: dict | None = None, overwrite: bool = False) -> dict:
+               summary: dict | None = None, overwrite: bool = False, by: str | None = None) -> dict:
     name = " ".join(name.split()) or "route"
     route_id = slug(name)
     p = _path(workdir, route_id)
@@ -99,6 +99,11 @@ def save_route(workdir: Path, name: str, mode: str, points: list, settings: dict
         "created": (existing or {}).get("created") or now, "updated": now,
         "summary": summary or None,
     }
+    if by:                                   # who saved it, where the app knows (hosted planner)
+        doc["created_by"] = (existing or {}).get("created_by") or by
+        doc["updated_by"] = by
+    elif existing and existing.get("created_by"):
+        doc["created_by"] = existing["created_by"]
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(doc, indent=2), encoding="utf-8")

@@ -131,14 +131,42 @@ progress { width:100%; height:10px; accent-color:var(--follow); }
 .leaflet-popup-content .sub { color:var(--muted); }
 
 /* ---- saved routes ---- */
-.saved h3 { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin:0 0 6px; }
+.saved h3 { display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin:0 0 6px; }
 .saved ul { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; }
 .saved li { display:flex; gap:8px; align-items:center; background:#242c34; border-radius:6px; padding:6px 8px; }
 .saved li.cur { outline:1px solid var(--follow); }
 .saved .r-main { flex:1; min-width:0; }
 .saved .r-name { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .saved .r-sub { color:var(--muted); font-size:12px; }
-.saved .btn { padding:3px 8px; font-size:12px; }
+.saved .btn { padding:3px 8px; font-size:12px; text-transform:none; letter-spacing:0; }
 .planner .actions { flex-wrap:wrap; }
 .planner .actions .btn { flex:1 1 40%; }
 #save-note { color:var(--ok); font-size:12px; min-height:1.2em; }
+
+/* ---- hosted planner: sign-in, account, people ---- */
+.auth-wrap { max-width:380px; margin:10vh auto 0; padding:0 16px; }
+.auth-wrap .brand { font-size:20px; margin-bottom:16px; text-align:center; }
+.home form.card label { display:flex; flex-direction:column; gap:4px; color:var(--muted); font-size:13px; margin-top:12px; }
+.home form.card input, .home form.card select { background:#12161a; color:var(--text); border:1px solid #3a444e; border-radius:4px;
+  padding:8px 10px; font:inherit; min-width:0; }
+.home form.card button[type=submit] { margin-top:14px; padding:9px 18px; }
+.home form.card .hint { margin:12px 0 0; }
+.home .ok { color:var(--ok); margin-top:8px; overflow-wrap:anywhere; }
+.home-wrap.narrow { max-width:460px; }
+.card.notice { border-color:var(--accent); margin-bottom:12px; }
+.grid2 { display:grid; grid-template-columns:1fr 1fr; gap:0 14px; }
+@media (max-width:640px) { .grid2 { grid-template-columns:1fr; } }
+.with-btn { display:flex; gap:6px; } .with-btn input { flex:1; }
+.card.mission.off { opacity:.55; }
+.chip.grey { background:#455a64; color:#fff; }
+#user-menu { display:flex; gap:8px; align-items:center; }
+#user-menu .who { color:var(--muted); }
+.m-routes { margin-top:6px; display:flex; flex-wrap:wrap; gap:6px; }
+.m-routes a { font-size:12px; padding:2px 8px; }
+
+/* ---- touch screens ---- */
+@media (pointer:coarse) {
+  .vtx { transform:scale(1.5); }
+  .btn { padding:8px 12px; }
+  .saved .btn { padding:6px 10px; }
+}

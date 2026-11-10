@@ -11,3 +11,5 @@ demo/
 *.db
 *.db-wal
 *.db-shm
+# Data folder of a locally run hosted planner
+webdata/

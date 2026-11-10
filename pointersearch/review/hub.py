@@ -7,7 +7,6 @@ review map and route planner under ``/m/<mission name>/``.
 
 from __future__ import annotations
 
-import re
 import threading
 import time
 from datetime import datetime
@@ -18,79 +17,16 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from starlette.responses import JSONResponse, RedirectResponse
 
 from .. import __version__
 from ..config import Config
 from ..saved_routes import list_routes
 from ..store import Store
-from .server import STATIC_DIR, create_app, require_local
-
-NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.\-]{0,59}$")
-WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL"} | {f"COM{i}" for i in range(1, 10)} | {f"LPT{i}" for i in range(1, 10)}
-
+from .missions import NAME_RE, STATIC_DIR, MissionDispatcher, clean_name, is_mission, require_local
+from .server import create_app
 
 class NewMission(BaseModel):
     name: str
-
-
-def clean_name(name: str) -> str:
-    name = " ".join(name.split())
-    if not name:
-        raise ValueError("give the mission a name")
-    reserved = name.split(".")[0].strip().upper() in WINDOWS_RESERVED
-    if not NAME_RE.match(name) or name.endswith(".") or ".." in name or reserved:
-        raise ValueError("use letters, numbers, spaces, dashes, dots and underscores (up to 60 characters)")
-    return name
-
-
-def is_mission(path: Path) -> bool:
-    return path.is_dir() and ((path / Config.FILENAME).exists() or (path / "pointersearch.db").exists())
-
-
-class MissionDispatcher:
-    """ASGI app mounted at /m: routes /m/<name>/... to that mission's own app."""
-
-    def __init__(self, root: Path, tiles_dir=None):
-        self.root = root
-        self.tiles_dir = tiles_dir
-        self._apps: dict[str, FastAPI] = {}
-        self._lock = threading.Lock()
-
-    def get(self, name: str) -> FastAPI | None:
-        with self._lock:
-            app = self._apps.get(name)
-            if app is None:
-                path = self.root / name
-                if not NAME_RE.match(name) or not is_mission(path):
-                    return None
-                app = self._apps[name] = create_app(path, self.tiles_dir, name)
-            return app
-
-    def store(self, name: str) -> Store | None:
-        app = self.get(name)
-        return app.state.store if app else None
-
-    async def __call__(self, scope, receive, send):
-        if scope["type"] not in ("http", "websocket"):
-            return
-        root_path = scope.get("root_path", "")
-        path = scope["path"]
-        new_style = bool(root_path) and path.startswith(root_path)      # Starlette >= 0.33 keeps the full path
-        rest = path[len(root_path):] if new_style else path
-        name, sep, _ = rest.lstrip("/").partition("/")
-        app = self.get(name) if name else None
-        if app is None:
-            await JSONResponse({"detail": "no such mission"}, status_code=404)(scope, receive, send)
-            return
-        if not sep:                                                      # /m/name -> /m/name/
-            await RedirectResponse(quote(f"{root_path}/{name}/"), status_code=307)(scope, receive, send)
-            return
-        child = dict(scope)
-        child["root_path"] = f"{root_path}/{name}"
-        if not new_style:
-            child["path"] = rest[len(name) + 1:] or "/"
-        await app(child, receive, send)
 
 
 def mission_card(name: str, path: Path, store: Store | None) -> dict:
@@ -117,7 +53,7 @@ def create_hub(root: str | Path, tiles_dir: str | Path | None = None) -> FastAPI
     root = Path(root).resolve()
     root.mkdir(parents=True, exist_ok=True)
     app = FastAPI(title="pointersearch", docs_url=None, redoc_url=None)
-    missions = MissionDispatcher(root, tiles_dir)
+    missions = MissionDispatcher(root, lambda path, name: create_app(path, tiles_dir, name))
     app.state.missions = missions
 
     @app.get("/")
@@ -126,7 +62,7 @@ def create_hub(root: str | Path, tiles_dir: str | Path | None = None) -> FastAPI
 
     @app.get("/api/app")
     def app_info():
-        return {"app": "pointersearch", "version": __version__, "root": str(root)}
+        return {"app": "pointersearch", "version": __version__, "root": str(root), "hosted": False}
 
     @app.get("/api/missions")
     def list_missions():

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · pointersearch</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="home auth">
+<div class="auth-wrap">
+  <div class="brand">pointersearch <span>route planner</span></div>
+  <form class="card" id="form" autocomplete="on">
+    <h2>Sign in</h2>
+    <label>Email address <input type="email" id="email" autocomplete="username" required autofocus></label>
+    <label>Password <input type="password" id="password" autocomplete="current-password" required></label>
+    <div class="err" id="err" role="alert"></div>
+    <button class="btn primary" type="submit" id="go">Sign in</button>
+    <p class="hint">Logins are created by your team's administrator. If you have forgotten your password, ask them to reset it.</p>
+  </form>
+</div>
+<script>
+(async function () {
+  const $ = id => document.getElementById(id);
+  const info = await fetch('/api/login-info').then(r => r.json()).catch(() => ({}));
+  if (info.setup_needed) $('err').textContent = 'No logins exist yet. Set the first administrator in the hosting settings and restart the app.';
+  $('form').addEventListener('submit', async e => {
+    e.preventDefault();
+    $('err').textContent = ''; $('go').disabled = true;
+    const r = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: $('email').value, password: $('password').value }) });
+    $('go').disabled = false;
+    const b = await r.json().catch(() => ({}));
+    if (!r.ok) { $('err').textContent = typeof b.detail === 'string' ? b.detail.charAt(0).toUpperCase() + b.detail.slice(1) + '.' : 'Could not sign in.'; $('password').select(); return; }
+    if (b.user.must_change) { location.href = '/account?first=1'; return; }
+    // only follow a "next" that stays on this site
+    const next = new URLSearchParams(location.search).get('next') || '/';
+    location.href = /^\/(?!\/)/.test(next) ? next : '/';
+  });
+})();
+</script>
+</body>
+</html>

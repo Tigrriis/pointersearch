@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>People · pointersearch</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="home">
+<header>
+  <a class="btn" href="/">‹ Missions</a>
+  <div class="brand">pointersearch <span>people</span></div>
+  <div class="controls" id="user-menu"></div>
+</header>
+<div class="home-wrap">
+  <form class="card" id="form" autocomplete="off">
+    <h2>Add a person</h2>
+    <p class="hint">Give them the temporary password yourself, in person or by phone. They choose their own at first sign-in.</p>
+    <div class="grid2">
+      <label>Name <input type="text" id="name" maxlength="80" required></label>
+      <label>Email address <input type="email" id="email" required></label>
+      <label>Temporary password <span class="with-btn"><input type="text" id="password" minlength="10" required spellcheck="false" autocomplete="off"><button class="btn" type="button" id="gen">Suggest</button></span></label>
+      <label>Role <select id="role"><option value="member">Member: plan and export routes</option><option value="admin">Administrator: also manage people</option></select></label>
+    </div>
+    <div class="err" id="err" role="alert"></div>
+    <div class="ok" id="ok" role="status"></div>
+    <button class="btn primary" type="submit">Add person</button>
+  </form>
+  <h2 class="list-title">People</h2>
+  <div id="list" class="missions"></div>
+</div>
+<script src="/static/session.js"></script>
+<script>
+(async function () {
+  const $ = id => document.getElementById(id);
+  const me = await fetch('/api/me').then(r => r.json());
+  psUserMenu(me);
+  const WORDS = 'amber basalt cedar delta ember fjord granite harbor island juniper kestrel lagoon meadow nimbus orchard pebble quartz ridge summit tundra umber valley willow yonder zephyr anchor beacon canyon dune estuary'.split(' ');
+  const suggest = () => { const a = new Uint32Array(4); crypto.getRandomValues(a); return [...a].slice(0, 3).map(n => WORDS[n % WORDS.length]).join('-') + '-' + (a[3] % 90 + 10); };
+  $('gen').onclick = () => { $('password').value = suggest(); };
+  const fmt = t => t ? new Date(t * 1000).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'never';
+  const nice = d => typeof d === 'string' ? d.charAt(0).toUpperCase() + d.slice(1) + '.' : 'That did not work.';
+
+  async function refresh() {
+    const list = await fetch('/api/users').then(r => r.json());
+    $('list').innerHTML = list.map(u => `<div class="card mission ${u.active ? '' : 'off'}" data-id="${u.id}">
+      <div class="m-main">
+        <div class="m-name">${psEsc(u.name)} ${u.role === 'admin' ? '<span class="chip">administrator</span>' : ''} ${u.active ? '' : '<span class="chip grey">disabled</span>'} ${u.must_change && u.active ? '<span class="chip grey">temporary password</span>' : ''}</div>
+        <div class="m-sub">${psEsc(u.email)}</div>
+        <div class="m-when">last signed in ${fmt(u.last_login)}</div>
+      </div>
+      <div class="m-actions">${u.id === me.id ? '<span class="hint">this is you</span>' : `
+        <button class="btn" data-act="reset">Reset password</button>
+        <button class="btn" data-act="role">${u.role === 'admin' ? 'Make member' : 'Make administrator'}</button>
+        <button class="btn" data-act="active">${u.active ? 'Disable' : 'Enable'}</button>`}</div>
+    </div>`).join('');
+  }
+
+  $('list').addEventListener('click', async e => {
+    const btn = e.target.closest('button[data-act]'); if (!btn) return;
+    const cardEl = btn.closest('[data-id]'); const id = cardEl.dataset.id; const name = cardEl.querySelector('.m-name').firstChild.textContent.trim();
+    const off = cardEl.classList.contains('off');
+    let patch;
+    if (btn.dataset.act === 'active') {
+      if (!off && !confirm(`Disable ${name}'s login? They are signed out at once and cannot sign in until you enable it again.`)) return;
+      patch = { active: off };
+    } else if (btn.dataset.act === 'role') {
+      const toAdmin = btn.textContent.includes('administrator');
+      if (toAdmin && !confirm(`Make ${name} an administrator? They will be able to add people and reset passwords.`)) return;
+      patch = { role: toAdmin ? 'admin' : 'member' };
+    } else {
+      const pw = prompt(`New temporary password for ${name} (at least 10 characters). They are signed out and must choose their own at next sign-in.`, suggest());
+      if (pw === null) return;
+      patch = { password: pw };
+    }
+    const r = await fetch('/api/users/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch) });
+    const b = await r.json().catch(() => ({}));
+    $('ok').textContent = ''; $('err').textContent = r.ok ? '' : nice(b.detail);
+    if (r.ok && patch.password) $('ok').textContent = `Temporary password set for ${name}: ${patch.password}`;
+    refresh();
+  });
+
+  $('form').addEventListener('submit', async e => {
+    e.preventDefault();
+    $('err').textContent = ''; $('ok').textContent = '';
+    const body = { name: $('name').value, email: $('email').value, password: $('password').value, role: $('role').value };
+    const r = await fetch('/api/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const b = await r.json().catch(() => ({}));
+    if (!r.ok) { $('err').textContent = nice(b.detail); return; }
+    $('ok').textContent = `Added ${b.name}. Give them this temporary password: ${body.password}`;
+    $('form').reset();
+    refresh();
+  });
+  refresh();
+})();
+</script>
+</body>
+</html>

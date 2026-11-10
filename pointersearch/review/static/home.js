@@ -9,7 +9,27 @@
   const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   $('new-name').placeholder = `e.g. ${today} Oaks Road`;
 
+  let hosted = false;
+  function hostedCard(m) {
+    const routes = (m.route_list || []).map(r => {
+      const sm = r.summary || {};
+      const tip = [r.mode === 'area' ? 'search area' : 'line route', sm.duration_min != null ? `about ${sm.duration_min} min` : '', sm.height_m != null ? `${sm.height_m} m` : ''].filter(Boolean).join(', ');
+      return `<a class="btn" href="${m.url}api/routes/${r.id}/kmz" download title="Download KMZ for DJI Pilot 2 (${tip})">⭳ ${esc(r.name)}</a>`;
+    }).join('');
+    const when = [m.modified ? `last changed ${m.modified.replace('T', ' ')}` : '', m.created_by ? `created by ${esc(m.created_by)}` : ''].filter(Boolean).join(' · ');
+    return `<div class="card mission">
+      <div class="m-main">
+        <div class="m-name">${esc(m.name)}</div>
+        <div class="m-sub">${plural(m.routes || 0, 'saved route')}</div>
+        ${routes ? `<div class="m-routes">${routes}</div>` : ''}
+        <div class="m-when">${when}</div>
+      </div>
+      <div class="m-actions"><a class="btn primary" href="${m.url}plan">Open planner</a></div>
+    </div>`;
+  }
+
   function card(m) {
+    if (hosted) return hostedCard(m);
     const o = m.objects || {};
     const bits = [plural(m.routes || 0, 'saved route'), plural(m.images, 'image')];
     if (m.n_objects) {
@@ -37,7 +57,7 @@
   async function refresh() {
     try {
       const r = await fetch('/api/missions').then(r => r.json());
-      $('root').textContent = `Missions folder: ${r.root}`;
+      $('root').textContent = r.root ? `Missions folder: ${r.root}` : '';
       $('list').innerHTML = r.missions.length ? r.missions.map(card).join('')
         : '<div class="hint">No missions yet. Create one above to start planning a route.</div>';
     } catch (e) {
@@ -56,7 +76,12 @@
     location.href = body.url + 'plan';       // a new mission starts in the route planner
   });
 
-  refresh();
-  setInterval(refresh, 5000);
+  fetch('/api/app').then(r => r.json()).then(a => {
+    hosted = !!a.hosted;
+    if (hosted) {
+      psUserMenu(a.user);
+      $('new-hint').textContent = 'A mission holds the planned routes for one search. Plan here, download the KMZ for the controller, and process the images on the laptop app.';
+    }
+  }).catch(() => {}).finally(() => { refresh(); setInterval(refresh, hosted ? 15000 : 5000); });
   $('new-name').focus();
 })();

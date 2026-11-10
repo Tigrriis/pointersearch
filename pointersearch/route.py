@@ -12,7 +12,7 @@ import math
 from dataclasses import dataclass, field
 
 from .config import CameraDefaults, FlightConfig, RouteConfig
-from .georef import LocalFrame
+from .geo import LocalFrame
 from .wpml import ActionGroup, WpmlRoute, WpmlWaypoint, gimbal_rotate, take_photo
 
 FULL_FRAME_DIAGONAL_MM = 43.266

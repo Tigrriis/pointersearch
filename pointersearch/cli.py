@@ -71,6 +71,12 @@ def cmd_app(a):
     sys.exit(run_app(a.root, host=a.host, port=a.port, tiles_dir=a.tiles, open_browser=not a.no_browser))
 
 
+def cmd_web(a):
+    """The hosted planner, run locally (for trying it out before deploying)."""
+    from .web.__main__ import main as web_main
+    sys.exit(web_main(["--data", a.data, "--host", a.host, "--port", str(a.port)]))
+
+
 def cmd_plan(a):
     """Open the route planner. Works before any imagery exists."""
     from .review.server import serve
@@ -271,6 +277,11 @@ def main(argv=None):
     s.add_argument("--tiles", help="folder of XYZ base-map tiles for offline use")
     s.add_argument("--no-browser", action="store_true", help="do not open the browser automatically")
     s.set_defaults(fn=cmd_app)
+
+    s = sub.add_parser("web", help="run the hosted planner locally (logins, missions, routes; no image processing)")
+    s.add_argument("--data", default="webdata", help="folder for missions and logins (default: ./webdata)")
+    s.add_argument("--host", default="127.0.0.1"); s.add_argument("--port", type=int, default=8010)
+    s.set_defaults(fn=cmd_web)
 
     s = sub.add_parser("plan", help="open the route planner (draw a line or area, download a KMZ)")
     s.add_argument("workdir", nargs="?", default="missions/planning")

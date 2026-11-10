@@ -1,0 +1,4 @@
+# Dependencies of the hosted planner only (python -m pointersearch.web).
+# The image-processing libraries used by the laptop app are deliberately absent.
+fastapi>=0.110
+uvicorn>=0.23

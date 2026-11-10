@@ -1,0 +1,31 @@
+# Render Blueprint for the hosted route planner (logins, missions, routes, KMZ export).
+# Image processing stays on the laptop app and is not deployed here.
+#
+# In the Render dashboard: New > Blueprint, pick this repository and branch.
+# You will be asked for the three values marked "sync: false" below.
+services:
+  - type: web
+    name: pointersearch-planner
+    runtime: python
+    region: singapore            # closest Render region to Australia
+    plan: starter                # a persistent disk needs a paid instance
+    buildCommand: pip install -r requirements-web.txt && pip install --no-deps .
+    startCommand: python -m pointersearch.web --host 0.0.0.0 --port $PORT
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: POINTERSEARCH_DATA
+        value: /var/data
+      # First administrator. Used once, while no logins exist; that person is made
+      # to choose a new password at first sign-in. Safe to delete afterwards.
+      - key: POINTERSEARCH_ADMIN_NAME
+        sync: false
+      - key: POINTERSEARCH_ADMIN_EMAIL
+        sync: false
+      - key: POINTERSEARCH_ADMIN_PASSWORD
+        sync: false
+    disk:
+      name: pointersearch-data   # missions, saved routes and logins live here
+      mountPath: /var/data
+      sizeGB: 1
