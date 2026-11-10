@@ -8,19 +8,35 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from ..config import Config
 from ..export import FORMATS, export
+from ..ingest import IngestError, IngestJob, pick_folder
 from ..mission import MissionError, default_home, plan_mission, points_from_store
 from ..route import RouteError, plan_route
+from ..saved_routes import RouteFileError, delete_route, list_routes, load_route, save_route
 from ..store import Store
 from ..wpml import build_kmz
 
 STATIC_DIR = Path(__file__).parent / "static"
+LOCAL_CLIENTS = {"127.0.0.1", "::1", "localhost", "testclient"}
+
+
+def require_local(request: Request):
+    """Actions that touch the host's disk are only for the person at the laptop,
+    not for other devices on the hotspot."""
+    host = request.client.host if request.client else ""
+    if host not in LOCAL_CLIENTS:
+        raise HTTPException(403, "this action is only available on the computer running pointersearch")
+
+
+class IngestRequest(BaseModel):
+    folder: str
+    watch: bool = False
 
 
 class Decision(BaseModel):
@@ -41,6 +57,7 @@ class RouteRequest(BaseModel):
     interval_m: float | None = None         # override: photo every N metres
     interval_s: float | None = None         # override: photo every N seconds
     photo_lenses: str | None = None         # e.g. "wide,ir"
+    overwrite: bool = False                 # saving only: replace a saved route of the same name
 
 
 def create_app(workdir: str | Path, tiles_dir: str | Path | None = None, mission_name: str | None = None) -> FastAPI:
@@ -50,6 +67,8 @@ def create_app(workdir: str | Path, tiles_dir: str | Path | None = None, mission
     store.regroup(cfg.group_radius_m)   # missions processed before grouping existed
     app = FastAPI(title="pointersearch review", docs_url=None, redoc_url=None)
     app.state.store = store
+    ingest = IngestJob(workdir)
+    app.state.ingest = ingest
 
     @app.get("/")
     def index():
@@ -59,6 +78,7 @@ def create_app(workdir: str | Path, tiles_dir: str | Path | None = None, mission
     def summary():
         s = store.summary()
         s["mission"] = mission_name or workdir.name
+        s["routes"] = len(list_routes(workdir))
         s["followup"] = {"transit_height_m": cfg.followup.transit_height_m,
                          "inspect_height_m": cfg.followup.inspect_height_m,
                          "max_height_m": cfg.flight.max_height_m}
@@ -148,6 +168,34 @@ def create_app(workdir: str | Path, tiles_dir: str | Path | None = None, mission
         return Response(build_kmz(plan.wpml, cfg.flight), media_type="application/vnd.google-earth.kmz",
                         headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
+    # ---- adding images ---------------------------------------------------
+    @app.get("/api/ingest")
+    def ingest_status():
+        return ingest.status()
+
+    @app.post("/api/ingest")
+    def ingest_start(body: IngestRequest, request: Request):
+        require_local(request)
+        try:
+            return ingest.start(body.folder, body.watch)
+        except IngestError as exc:
+            running = "already running" in str(exc)
+            raise HTTPException(409 if running else 400, str(exc))
+
+    @app.post("/api/ingest/stop")
+    def ingest_stop(request: Request):
+        require_local(request)
+        return ingest.stop()
+
+    @app.post("/api/browse")
+    def browse(request: Request):
+        """Open the operating system's folder dialog on this computer."""
+        require_local(request)
+        folder = pick_folder()
+        if folder is None:
+            raise HTTPException(501, "no folder dialog is available here; paste the folder path instead")
+        return {"folder": folder}
+
     # ---- search route planner -------------------------------------------
     @app.get("/plan")
     def plan_page():
@@ -176,6 +224,57 @@ def create_app(workdir: str | Path, tiles_dir: str | Path | None = None, mission
         fname = f"{safe}_{plan.mode}_{plan.height_m:g}m.kmz"
         return Response(build_kmz(plan.wpml, cfg.flight), media_type="application/vnd.google-earth.kmz",
                         headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+    # ---- saved routes ------------------------------------------------------
+    @app.get("/api/routes")
+    def routes_list():
+        return list_routes(workdir)
+
+    @app.post("/api/routes")
+    def routes_save(req: RouteRequest):
+        """Save the drawing and settings into the mission so it can be reopened and edited."""
+        plan = _route(req)                                   # only save something that can be flown
+        s = plan.summary()
+        summary = {k: s[k] for k in ("waypoints", "n_photos", "distance_m", "duration_min", "height_m",
+                                     "interval_m", "track_spacing_m")}
+        try:
+            return save_route(workdir, req.name, req.mode, req.points, req.model_dump(), summary, req.overwrite)
+        except FileExistsError:
+            raise HTTPException(409, f"a route called '{' '.join(req.name.split())}' is already saved in this mission")
+
+    @app.get("/api/routes/{route_id}")
+    def routes_get(route_id: str):
+        try:
+            r = load_route(workdir, route_id)
+        except RouteFileError:
+            r = None
+        if r is None:
+            raise HTTPException(404, "no such saved route")
+        return r
+
+    @app.delete("/api/routes/{route_id}")
+    def routes_delete(route_id: str, request: Request):
+        require_local(request)
+        try:
+            ok = delete_route(workdir, route_id)
+        except RouteFileError:
+            ok = False
+        if not ok:
+            raise HTTPException(404, "no such saved route")
+        return {"deleted": route_id}
+
+    @app.get("/api/routes/{route_id}/kmz")
+    def routes_kmz(route_id: str):
+        r = routes_get(route_id)
+        st = r.get("settings") or {}
+        try:
+            req = RouteRequest(mode=r["mode"], points=r["points"], name=r["name"],
+                               **{k: st.get(k) for k in ("height_m", "speed_ms", "lens", "front_overlap",
+                                                         "side_overlap", "angle_deg", "interval_m", "interval_s",
+                                                         "photo_lenses")})
+        except Exception:
+            raise HTTPException(400, "the saved route file has invalid settings")
+        return route_kmz(req)
 
     @app.get("/files/{rel_path:path}")
     def files(rel_path: str):

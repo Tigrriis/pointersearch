@@ -1,5 +1,6 @@
 """Command line interface.
 
+    pointersearch app                                      (start screen in the browser; no other commands needed)
     pointersearch init    missions/2025-06-01-blue-mtns
     pointersearch process missions/2025-06-01-blue-mtns /media/sdcard/DCIM/DJI_001
     pointersearch watch   missions/2025-06-01-blue-mtns /srv/uploads
@@ -62,6 +63,12 @@ def cmd_serve(a):
     print(f"review map:    http://{a.host}:{a.port}/")
     print(f"route planner: http://{a.host}:{a.port}/plan   (Ctrl-C to stop)")
     serve(a.workdir, host=a.host, port=a.port, tiles_dir=a.tiles, mission_name=a.name)
+
+
+def cmd_app(a):
+    """The full app: start screen, missions, planner and review, in the browser."""
+    from .review.hub import run_app
+    sys.exit(run_app(a.root, host=a.host, port=a.port, tiles_dir=a.tiles, open_browser=not a.no_browser))
 
 
 def cmd_plan(a):
@@ -257,6 +264,13 @@ def main(argv=None):
     s.add_argument("--tiles", help="folder of XYZ base-map tiles ({z}/{x}/{y}.png) for offline use")
     s.add_argument("--name", help="mission name shown in the UI")
     s.set_defaults(fn=cmd_serve)
+
+    s = sub.add_parser("app", help="start the app with its start screen (create and open missions in the browser)")
+    s.add_argument("--root", default="missions", help="folder that holds the missions (default: ./missions)")
+    s.add_argument("--host", default="127.0.0.1"); s.add_argument("--port", type=int, default=8008)
+    s.add_argument("--tiles", help="folder of XYZ base-map tiles for offline use")
+    s.add_argument("--no-browser", action="store_true", help="do not open the browser automatically")
+    s.set_defaults(fn=cmd_app)
 
     s = sub.add_parser("plan", help="open the route planner (draw a line or area, download a KMZ)")
     s.add_argument("workdir", nargs="?", default="missions/planning")

@@ -32,6 +32,23 @@ Use cases: missing persons (alive or deceased), lost dogs and other animals.
    route for DJI Pilot 2 that revisits each one at a lower height
    (see [docs/FOLLOWUP_MISSIONS.md](docs/FOLLOWUP_MISSIONS.md)).
 
+## Start the app
+
+**Windows:** double-click `PointerSearch.bat` in this folder. The first run sets
+itself up (needs internet once); after that it opens the start screen in your
+browser. Keep its window open while you work and close it to stop.
+
+**Any system**, after installing as below:
+
+```bash
+pointersearch app
+```
+
+From the start screen you create a mission, plan and save routes, add the images
+from a flight, and review candidates, with no further commands. See
+[docs/APP.md](docs/APP.md). The individual commands further down still work for
+scripting.
+
 ## Install
 
 Python 3.10+ on the base laptop.

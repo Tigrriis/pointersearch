@@ -24,6 +24,8 @@ LENS = {
 MIN_LEG_M = 0.5
 TURN_S = 4.0                 # stop, yaw and accelerate at each waypoint
 MAX_PREVIEW_PHOTOS = 2000
+MAX_SWEEP_LINES = 400        # beyond this the drawing is not a single-flight search area
+MAX_ROUTE_KM = 100.0
 PERSON_WIDTH_M = 0.5
 
 
@@ -83,6 +85,9 @@ def sweep_area(polygon_ne: list[tuple[float, float]], spacing_m: float,
     vmin, vmax = min(v for _, v in uv), max(v for _, v in uv)
     extent = vmax - vmin
     n_lines = max(1, math.ceil(extent / spacing_m - 1e-9))
+    if n_lines > MAX_SWEEP_LINES:
+        raise RouteError(f"the area is far too large ({extent / 1000:.0f} km across the sweep lines); "
+                         "zoom in and draw the search area at its real size")
     strip = extent / n_lines
     first = vmin + strip / 2.0
     edges = list(zip(uv, uv[1:] + uv[:1]))
@@ -218,6 +223,9 @@ def plan_route(mode: str, points: list[tuple[float, float]], cfg: RouteConfig, f
     distance = path_length(path_ne)
     if distance < 1.0:
         raise RouteError("the route is too short")
+    if distance > MAX_ROUTE_KM * 1000:
+        raise RouteError(f"the route is {distance / 1000:.0f} km long, far beyond one flight; "
+                         "zoom in and draw it at its real size, or split it")
 
     if interval_s is not None:
         if interval_s <= 0:

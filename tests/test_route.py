@@ -109,7 +109,7 @@ def test_interval_overrides_and_warnings():
     assert any("gaps between photos" in w for w in gap.warnings)
     no_ir = plan("line", pts, lens="thermal", photo_lenses="wide")
     assert any("'ir' is not among" in w for w in no_ir.warnings)
-    long = plan("area", rect(3000, 3000), lens="thermal")
+    long = plan("area", rect(1500, 1500), lens="thermal")
     assert any("budget" in w for w in long.warnings)
 
 
@@ -121,6 +121,15 @@ def test_interval_overrides_and_warnings():
 def test_bad_settings_are_refused(kw, match):
     with pytest.raises(RouteError, match=match):
         plan("line", [ll(0, 0), ll(0, 400)], **kw)
+
+
+def test_absurdly_large_drawings_are_refused_quickly():
+    # a careless click at continent zoom must not generate millions of waypoints
+    big = [(-39.3, 108.3), (-10.2, 106.5), (-4.1, 152.2), (-32.2, 166.3)]
+    with pytest.raises(RouteError, match="far too large"):
+        plan("area", big)
+    with pytest.raises(RouteError, match="beyond one flight"):
+        plan("line", big[:2])
 
 
 def test_too_few_points():

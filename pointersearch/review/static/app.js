@@ -12,8 +12,8 @@
   const footprintGroup = L.layerGroup().addTo(map);
   const routeGroup = L.layerGroup().addTo(map);
 
-  fetch('/api/summary').then(r => r.json()).then(s => {
-    if (s.tiles) L.tileLayer('/tiles/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 24 }).addTo(map);
+  fetch('api/summary').then(r => r.json()).then(s => {
+    if (s.tiles) L.tileLayer('tiles/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 24 }).addTo(map);
   });
 
   const $ = id => document.getElementById(id);
@@ -34,19 +34,20 @@
 
   async function refresh() {
     const [summary, overlays, images, cands] = await Promise.all([
-      fetch('/api/summary').then(r => r.json()),
-      fetch('/api/overlays').then(r => r.json()),
-      fetch('/api/images').then(r => r.json()),
-      fetch('/api/groups').then(r => r.json()),
+      fetch('api/summary').then(r => r.json()),
+      fetch('api/overlays').then(r => r.json()),
+      fetch('api/images').then(r => r.json()),
+      fetch('api/groups').then(r => r.json()),
     ]);
     $('mission').textContent = summary.mission || '';
+    $('empty').hidden = summary.images > 0 || importState.busy;
     const c = summary.candidates || {};
     const g = summary.groups || {};
     $('stats').textContent = `${summary.images_ok} images · ${summary.n_groups || 0} objects (${g.pending || 0} pending · ${g.accepted || 0} accepted · ${g.followup || 0} follow-up · ${g.rejected || 0} rejected) from ${Object.values(c).reduce((a, b) => a + b, 0)} sightings`;
 
     overlays.forEach(o => {
       if (!state.overlays.has(o.id)) {
-        const layer = L.imageOverlay('/files/' + o.png, o.bounds, { opacity: 0.95, interactive: false });
+        const layer = L.imageOverlay('files/' + o.png, o.bounds, { opacity: 0.95, interactive: false });
         state.overlays.set(o.id, layer);
         overlayGroup.addLayer(layer);
       }
@@ -56,9 +57,10 @@
       L.polygon(i.footprint, { color: '#5d7a96', weight: 1, fill: false, opacity: 0.6, interactive: false }).addTo(footprintGroup);
     });
     state.cands = cands;
-    if (!state.fitted) {
-      const pts = images.filter(i => i.lat).map(i => [i.lat, i.lon]);
-      if (pts.length) { map.fitBounds(L.latLngBounds(pts).pad(0.2)); state.fitted = true; }
+    const pts = images.filter(i => i.lat).map(i => [i.lat, i.lon]);
+    // fit once, and keep fitting while an import is still bringing images in
+    if (pts.length && (!state.fitted || (importState.busy && pts.length !== state.fitN))) {
+      map.fitBounds(L.latLngBounds(pts).pad(0.2)); state.fitted = true; state.fitN = pts.length;
     }
     render();
   }
@@ -99,7 +101,7 @@
       const li = document.createElement('li');
       li.dataset.id = c.id;
       if (c.id === state.sel) li.classList.add('sel');
-      li.innerHTML = `<img loading="lazy" src="/files/${c.best.thumb}">
+      li.innerHTML = `<img loading="lazy" src="files/${c.best.thumb}">
         <div><div class="title">${c.detectors.map(d => `<span class="badge ${d}">${d}</span>`).join(' ')} ${c.score.toFixed(1)}</div>
         <div class="sub">${c.area_m2 ?? '?'} m² · seen in ${c.n_frames} frame${c.n_frames > 1 ? 's' : ''}${c.min_range_m != null ? ' · ' + Math.round(c.min_range_m) + ' m from aircraft' : ''}</div></div>
         <div class="st ${c.status}">${STATUS_LABEL[c.status] || c.status}</div>`;
@@ -128,12 +130,12 @@
     if (!c) { el.innerHTML = '<div class="hint">Select a candidate. Keys: <b>A</b> accept, <b>W</b> follow-up waypoint, <b>R</b> reject, <b>U</b> undo, <b>N</b>/<b>P</b> next/prev, <b>F</b> full image.</div>'; return; }
     const b = c.best;
     const temp = b.extra && b.extra.peak_temp_c != null ? ` · ${b.extra.peak_temp_c.toFixed(1)} °C` : '';
-    const strip = c.thumbs.length > 1 ? `<div class="strip">${c.thumbs.slice(1).map(t => `<img src="/files/${t}">`).join('')}</div>` : '';
-    el.innerHTML = `<img src="/files/${b.thumb}">${strip}
+    const strip = c.thumbs.length > 1 ? `<div class="strip">${c.thumbs.slice(1).map(t => `<img src="files/${t}">`).join('')}</div>` : '';
+    el.innerHTML = `<img src="files/${b.thumb}">${strip}
       <div class="meta"><span>${c.detectors.map(d => `<span class="badge ${d}">${d}</span>`).join(' ')} score ${c.score.toFixed(2)}${temp}</span>
       <span class="st ${c.status}">${STATUS_LABEL[c.status] || c.status}</span></div>
       <div class="meta"><span>${c.lat.toFixed(6)}, ${c.lon.toFixed(6)}</span><span>${c.area_m2 ?? '?'} m² · ${c.n_sightings} sighting${c.n_sightings > 1 ? 's' : ''} in ${c.n_frames} frame${c.n_frames > 1 ? 's' : ''}</span></div>
-      <div class="meta"><span>${baseName(b.image_path)}</span><a class="btn" href="/image/${b.image_id}" target="_blank">full image</a></div>
+      <div class="meta"><span>${baseName(b.image_path)}</span><a class="btn" href="image/${b.image_id}" target="_blank">full image</a></div>
       <div class="actions"><button class="accept">Accept (A)</button><button class="followup" title="tag for a second look on another flight">Follow-up (W)</button><button class="reject">Reject (R)</button><button class="undo">Undo (U)</button></div>`;
     el.querySelector('.accept').onclick = () => decide('accepted');
     el.querySelector('.followup').onclick = () => decide('followup');
@@ -144,7 +146,7 @@
   async function decide(status) {
     if (!state.sel) return;
     const id = state.sel;
-    const updated = await fetch(`/api/groups/${id}`, {
+    const updated = await fetch(`api/groups/${id}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }),
     }).then(r => r.json());
     const i = state.cands.findIndex(x => x.id === id);
@@ -168,7 +170,7 @@
   }
 
   document.addEventListener('keydown', e => {
-    if (e.target.tagName === 'INPUT' || $('mission-dlg').open) return;
+    if (e.target.tagName === 'INPUT' || $('mission-dlg').open || $('import-dlg').open) return;
     const k = e.key.toLowerCase();
     if (k === 'a') decide('accepted');
     else if (k === 'w') decide('followup');
@@ -176,7 +178,7 @@
     else if (k === 'u') decide('pending');
     else if (k === 'n' || k === 'j') step(1);
     else if (k === 'p' || k === 'k') step(-1);
-    else if (k === 'f' && state.sel) { const c = state.cands.find(x => x.id === state.sel); window.open(`/image/${c.best.image_id}`); }
+    else if (k === 'f' && state.sel) { const c = state.cands.find(x => x.id === state.sel); window.open(`image/${c.best.image_id}`); }
   });
 
   // ---- follow-up mission -------------------------------------------------
@@ -192,7 +194,7 @@
     // Dashed line through the follow-up objects in planned order.
     const seq = ++routeSeq;
     if (!state.cands.some(c => c.status === 'followup')) { routeGroup.clearLayers(); return; }
-    const r = await fetch('/api/mission?' + missionQuery());
+    const r = await fetch('api/mission?' + missionQuery());
     if (seq !== routeSeq) return;            // a newer request is in flight
     routeGroup.clearLayers();
     if (!r.ok) return;
@@ -207,7 +209,7 @@
 
   async function updateMission() {
     const el = $('m-summary'), dl = $('m-download');
-    const r = await fetch('/api/mission?' + missionQuery());
+    const r = await fetch('api/mission?' + missionQuery());
     if (!r.ok) {
       const e = await r.json().catch(() => ({}));
       el.innerHTML = `<div class="err">${e.detail || 'Cannot build mission.'}</div>`;
@@ -216,7 +218,7 @@
     }
     const p = await r.json();
     dl.classList.remove('disabled');
-    dl.href = '/api/mission.kmz?' + missionQuery();
+    dl.href = 'api/mission.kmz?' + missionQuery();
     el.innerHTML = `<div><b>${p.objects}</b> object${p.objects > 1 ? 's' : ''} · ${p.waypoints} waypoints · about ${p.distance_m} m · about <b>${p.duration_min} min</b></div>`
       + p.warnings.map(w => `<div class="warn">⚠ ${w}</div>`).join('')
       + `<ol>${p.order.map(o => `<li>G${o.object_id} · ${o.lat.toFixed(6)}, ${o.lon.toFixed(6)} · ${o.label}</li>`).join('')}</ol>`;
@@ -225,7 +227,7 @@
 
   $('mission-btn').addEventListener('click', async () => {
     if (!$('m-transit').value) {
-      const s = await fetch('/api/summary').then(r => r.json());
+      const s = await fetch('api/summary').then(r => r.json());
       $('m-transit').value = s.followup.transit_height_m;
       $('m-inspect').value = s.followup.inspect_height_m;
       $('m-transit').max = $('m-inspect').max = s.followup.max_height_m;
@@ -235,6 +237,66 @@
   });
   ['m-transit', 'm-inspect'].forEach(id => $(id).addEventListener('input', updateMission));
 
+  // ---- add images ---------------------------------------------------------
+  const importState = { busy: false, timer: null, last: null };
+  if (location.pathname.startsWith('/m/')) $('home-link').hidden = false;
+
+  function showImport(st) {
+    const busy = st.state === 'running' || st.state === 'watching';
+    const wasBusy = importState.busy;
+    importState.busy = busy;
+    $('i-start').hidden = busy; $('i-stop').hidden = !busy;
+    $('i-folder').disabled = $('i-watch').disabled = $('i-browse').disabled = busy;
+    const chip = $('import-chip');
+    chip.hidden = !busy;
+    chip.textContent = st.state === 'watching' ? 'watching for images' : `importing ${st.done}/${st.total}`;
+    let html = '';
+    if (st.state === 'running') {
+      html = `<progress max="${Math.max(1, st.total)}" value="${st.done}"></progress>
+        <div>Processing ${st.done} of ${st.total}${st.current ? ' · ' + st.current : ''}</div>`;
+    } else if (st.state === 'error') {
+      html = `<div class="err">${st.message || 'The import failed.'}</div>`;
+    } else if (st.message) {
+      html = `<div>${st.message}</div>`;
+    }
+    if (st.state !== 'idle' && st.folder && !busy) html += `<div class="hint">${st.folder}</div>`;
+    $('i-status').innerHTML = html;
+    if (busy && st.folder && !$('i-folder').value) $('i-folder').value = st.folder;
+    if (wasBusy && !busy && st.state !== 'watching') state.fitted = false;   // final fit to everything imported
+    if (busy || wasBusy) refresh();                 // pull new overlays and objects onto the map
+    clearTimeout(importState.timer);
+    if (busy || $('import-dlg').open) importState.timer = setTimeout(pollImport, busy ? 1200 : 4000);
+  }
+  async function pollImport() {
+    try { showImport(await fetch('api/ingest').then(r => r.json())); } catch (e) { /* server stopped */ }
+  }
+  function openImport() {
+    try { if (!$('i-folder').value) $('i-folder').value = localStorage.getItem('ps-folder') || ''; } catch (e) {}
+    $('import-dlg').showModal();
+    pollImport();
+  }
+  $('import-btn').addEventListener('click', openImport);
+  $('empty-import').addEventListener('click', openImport);
+  $('i-browse').addEventListener('click', async () => {
+    $('i-browse').disabled = true;
+    const r = await fetch('api/browse', { method: 'POST' });
+    $('i-browse').disabled = false;
+    if (r.ok) { const b = await r.json(); if (b.folder) $('i-folder').value = b.folder; }
+    else { const b = await r.json().catch(() => ({})); $('i-status').innerHTML = `<div class="hint">${b.detail || 'Paste the folder path instead.'}</div>`; $('i-folder').focus(); }
+  });
+  $('i-start').addEventListener('click', async () => {
+    const folder = $('i-folder').value.trim();
+    const r = await fetch('api/ingest', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ folder, watch: $('i-watch').checked }) });
+    const b = await r.json().catch(() => ({}));
+    if (!r.ok) { $('i-status').innerHTML = `<div class="err">${typeof b.detail === 'string' ? b.detail : 'Could not start the import.'}</div>`; return; }
+    try { localStorage.setItem('ps-folder', folder); } catch (e) {}
+    showImport(b);
+  });
+  $('i-stop').addEventListener('click', async () => { showImport(await fetch('api/ingest/stop', { method: 'POST' }).then(r => r.json())); });
+
   refresh().then(drawRoute);
   setInterval(refresh, 5000);
+  pollImport();
+  if (location.hash === '#import') openImport();
 })();

@@ -15,8 +15,10 @@
 - [x] Route planner: draw a line or search area, even-interval photos, KMZ export
 - Verify exported routes on a Matrice 4T: aircraft codes, stacked waypoints, lens names,
   even-distance photo trigger.
-- Planner: take-off point for route ordering and full time estimate, save/load named routes,
-  split a large area across batteries.
+- [x] Start screen: create and open missions, add images and save routes from the browser;
+  Windows double-click launcher
+- Planner: take-off point for route ordering and full time estimate, split a large area
+  across batteries, show saved routes on the review map.
 - Terrain-aware follow-up heights from a DEM.
 - Aircraft track and searched-area coverage layer from frame footprints.
 

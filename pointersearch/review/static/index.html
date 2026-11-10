@@ -9,6 +9,7 @@
 </head>
 <body>
 <header>
+  <a class="btn" id="home-link" href="/" hidden title="back to the list of missions">‹ Missions</a>
   <div class="brand">pointersearch <span id="mission"></span></div>
   <div class="stats" id="stats"></div>
   <div class="controls">
@@ -20,15 +21,24 @@
     <label title="hide objects whose best colour-anomaly score is below this">min RX <input type="number" id="f-minscore" value="0" min="0" step="10" style="width:5em"></label>
     <label title="hide objects seen in fewer frames than this">min frames <select id="f-minframes"><option>1</option><option>2</option><option>3</option></select></label>
     <span class="stats" id="shown"></span>
-    <a class="btn" href="/plan" title="draw a search route or area and export it for DJI Pilot 2">Plan route</a>
+    <span class="chip" id="import-chip" hidden></span>
+    <button class="btn" id="import-btn" title="process a folder of drone images into this mission">Add images…</button>
+    <a class="btn" href="plan" title="draw a search route or area and export it for DJI Pilot 2">Plan route</a>
     <button class="btn" id="mission-btn" title="waypoint mission over follow-up objects for DJI Pilot 2">Mission…</button>
-    <a class="btn" href="/api/export.gpx?status=accepted" download>GPX</a>
-    <a class="btn" href="/api/export.kml?status=accepted" download>KML</a>
-    <a class="btn" href="/api/export.geojson?status=all" download>GeoJSON</a>
+    <a class="btn" href="api/export.gpx?status=accepted" download>GPX</a>
+    <a class="btn" href="api/export.kml?status=accepted" download>KML</a>
+    <a class="btn" href="api/export.geojson?status=all" download>GeoJSON</a>
   </div>
 </header>
 <main>
-  <div id="map"></div>
+  <div id="map-wrap">
+    <div id="map"></div>
+    <div class="empty" id="empty" hidden>
+      <b>No images in this mission yet.</b>
+      <div class="hint" style="margin-top:6px">Plan a route to fly, or add the images from a flight.</div>
+      <div class="row"><a class="btn" href="plan">Plan route</a><button class="btn primary" id="empty-import">Add images…</button></div>
+    </div>
+  </div>
   <aside>
     <div class="detail" id="detail">
       <div class="hint">Select a candidate. Keys: <b>A</b> accept, <b>W</b> follow-up waypoint, <b>R</b> reject, <b>U</b> undo, <b>N</b>/<b>P</b> next/prev, <b>F</b> full image.</div>
@@ -36,6 +46,23 @@
     <ul id="list"></ul>
   </aside>
 </main>
+<dialog id="import-dlg">
+  <form method="dialog">
+    <h3>Add images</h3>
+    <p class="hint">Choose the folder that holds the photos from the aircraft, for example the DCIM folder on the SD card. Photos are read where they are, not copied.</p>
+    <div class="path-row">
+      <input type="text" id="i-folder" placeholder="E:\DCIM\DJI_001" spellcheck="false">
+      <button class="btn" type="button" id="i-browse">Browse…</button>
+    </div>
+    <label class="check"><input type="checkbox" id="i-watch"> Keep watching this folder for new images</label>
+    <div id="i-status"></div>
+    <div class="row end">
+      <button class="btn" value="cancel">Close</button>
+      <button class="btn" type="button" id="i-stop" hidden>Stop</button>
+      <button class="btn primary" type="button" id="i-start">Add images</button>
+    </div>
+  </form>
+</dialog>
 <dialog id="mission-dlg">
   <form method="dialog">
     <h3>Follow-up mission</h3>

@@ -9,18 +9,24 @@
 </head>
 <body class="plan">
 <header>
-  <div class="brand">pointersearch <span>route planner</span></div>
+  <a class="btn" id="home-link" href="/" hidden title="back to the list of missions">‹ Missions</a>
+  <div class="brand">pointersearch <span id="mission">route planner</span></div>
   <div class="stats" id="hint">Click the map to add points. Drag a point to move it. Right-click a point to delete it.</div>
   <div class="controls">
     <input type="text" id="goto" placeholder="lat, lon" title="jump to a coordinate, e.g. -41.5634, 146.9991">
     <button class="btn" id="goto-btn">Go</button>
     <button class="btn" id="fit-btn" title="zoom to the drawing">Fit drawing</button>
-    <a class="btn" href="/">Review map</a>
+    <a class="btn" href="./">Review map</a>
   </div>
 </header>
 <main>
   <div id="map"></div>
   <aside class="planner">
+    <div class="saved">
+      <h3>Saved in this mission</h3>
+      <ul id="saved"><li class="hint">No saved routes yet.</li></ul>
+    </div>
+
     <div class="seg" role="tablist">
       <button id="mode-line" class="on" title="follow a line: a track, creek or ridgeline">Line route</button>
       <button id="mode-area" title="sweep back and forth across an area">Search area</button>
@@ -65,8 +71,10 @@
 
     <div class="actions">
       <button class="btn" id="undo-btn" title="Ctrl+Z">Undo point</button>
-      <button class="btn" id="clear-btn">Clear</button>
+      <button class="btn" id="clear-btn" title="start a new, empty route">New route</button>
+      <button class="btn disabled" id="save-btn" title="save into the mission so it can be reopened and edited">Save route</button>
       <button class="btn primary disabled" id="dl-btn">Download KMZ</button>
+      <div id="save-note" style="flex:1 1 100%"></div>
     </div>
   </aside>
 </main>

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pointersearch</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="home">
+<header>
+  <div class="brand">pointersearch <span>missions</span></div>
+  <div class="stats" id="root"></div>
+</header>
+<div class="home-wrap">
+  <section class="card new">
+    <h2>New mission</h2>
+    <p class="hint">A mission holds the planned routes, the images from the flights, and the review decisions for one search. You can plan routes before any images exist.</p>
+    <form id="new-form" autocomplete="off">
+      <input type="text" id="new-name" maxlength="60" placeholder="e.g. 2026-11-10 Oaks Road" aria-label="Mission name">
+      <button class="btn primary" type="submit">Create mission</button>
+    </form>
+    <div id="new-err" class="err"></div>
+  </section>
+
+  <h2 class="list-title">Missions</h2>
+  <div id="list" class="missions"><div class="hint">Loading…</div></div>
+</div>
+<script src="/static/home.js"></script>
+</body>
+</html>

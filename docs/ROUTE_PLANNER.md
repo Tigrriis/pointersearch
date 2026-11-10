@@ -5,13 +5,12 @@ taking photos at an even spacing along the whole route.
 
 ## Open it
 
-```bash
-pointersearch plan missions/<name>
-```
+Start the app, create or pick a mission on the start screen, and choose
+*Plan route*. A new mission opens straight into the planner, so planning works
+before any imagery has been collected.
 
-Then open http://127.0.0.1:8008/plan. The mission directory is created if it does
-not exist, so planning works before any imagery has been collected. The planner
-is also linked from the review map (*Plan route*).
+From the command line, `pointersearch plan missions/<name>` opens the planner for
+one mission at http://127.0.0.1:8008/plan.
 
 ## Base map
 
@@ -29,7 +28,39 @@ is also linked from the review map (*Plan route*).
 | Search area | the corners of the area | back-and-forth sweep lines covering it |
 
 Click to add a point, drag to move it, right-click to delete it, Ctrl+Z to undo
-the last one. The drawing and settings are remembered in the browser.
+the last one. Drawing is disabled while zoomed far out, to prevent accidental
+country-sized routes; zoom in or use the *lat, lon* box first.
+
+## Saving and editing routes
+
+*Save route* stores the drawing and its settings in the mission. Saved routes are
+listed at the top of the panel:
+
+- **Open** loads one back into the planner to change points or settings. Saving
+  again under the same name updates it; changing the name saves a copy.
+- **KMZ** downloads the file for Pilot 2 without opening the route.
+- **✕** deletes it, after a confirmation.
+
+Each route is one small JSON file in `<mission>/routes/`. It records what was
+drawn and chosen, not the generated waypoints, so it stays editable and the
+waypoints are recalculated every time it is opened or downloaded:
+
+```json
+{
+  "format": "pointersearch-route", "version": 1,
+  "id": "north-block", "name": "North block",
+  "mode": "area",
+  "points": [[-41.5630, 146.9990], [-41.5630, 147.0038], [-41.5603, 147.0038]],
+  "settings": {"height_m": 90, "speed_ms": 8, "lens": "wide",
+               "front_overlap": 0.25, "side_overlap": 0.25, "angle_deg": null,
+               "interval_m": null, "interval_s": null, "photo_lenses": "wide,ir"},
+  "created": "2026-11-10T09:12:00", "updated": "2026-11-10T09:40:00"
+}
+```
+
+Points are `[latitude, longitude]`. The files can be copied between missions or
+edited in a text editor. The unsaved working drawing is also remembered per
+mission in the browser.
 
 ## Settings
 
