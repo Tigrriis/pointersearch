@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from ..config import Config
 from ..export import FORMATS, export
+from ..mission import MissionError, build_kmz, default_home, plan_mission, points_from_store
 from ..store import Store
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -28,7 +29,8 @@ class Decision(BaseModel):
 def create_app(workdir: str | Path, tiles_dir: str | Path | None = None, mission_name: str | None = None) -> FastAPI:
     workdir = Path(workdir).resolve()
     store = Store(workdir)
-    store.regroup(Config.load(workdir).group_radius_m)   # missions processed before grouping existed
+    cfg = Config.load(workdir)
+    store.regroup(cfg.group_radius_m)   # missions processed before grouping existed
     app = FastAPI(title="pointersearch review", docs_url=None, redoc_url=None)
     app.state.store = store
 
@@ -40,6 +42,9 @@ def create_app(workdir: str | Path, tiles_dir: str | Path | None = None, mission
     def summary():
         s = store.summary()
         s["mission"] = mission_name or workdir.name
+        s["followup"] = {"transit_height_m": cfg.followup.transit_height_m,
+                         "inspect_height_m": cfg.followup.inspect_height_m,
+                         "max_height_m": cfg.followup.max_height_m}
         s["tiles"] = tiles_dir is not None
         return s
 
@@ -60,7 +65,7 @@ def create_app(workdir: str | Path, tiles_dir: str | Path | None = None, mission
         try:
             ok = store.set_decision(cid, d.status, d.note)
         except ValueError:
-            raise HTTPException(400, "status must be pending|accepted|rejected")
+            raise HTTPException(400, "status must be pending|accepted|followup|rejected")
         if not ok:
             raise HTTPException(404, "no such candidate")
         return store.get_candidate(cid)
@@ -74,7 +79,7 @@ def create_app(workdir: str | Path, tiles_dir: str | Path | None = None, mission
         try:
             n = store.set_group_decision(gid, d.status, d.note)
         except ValueError:
-            raise HTTPException(400, "status must be pending|accepted|rejected")
+            raise HTTPException(400, "status must be pending|accepted|followup|rejected")
         if not n:
             raise HTTPException(404, "no such group")
         g = next((g for g in store.list_groups() if g["id"] == gid), None)
@@ -87,6 +92,39 @@ def create_app(workdir: str | Path, tiles_dir: str | Path | None = None, mission
         body, mime = export(store, fmt, status, by=by)
         return Response(body, media_type=mime,
                         headers={"Content-Disposition": f'attachment; filename="candidates_{status}.{fmt}"'})
+
+    def _plan(transit, inspect, status, home):
+        home_ll = None
+        if home:
+            try:
+                lat, lon = (float(v) for v in home.split(","))
+                home_ll = (lat, lon)
+            except ValueError:
+                raise HTTPException(400, "home must be 'lat,lon'")
+        else:
+            home_ll = default_home(store)
+        try:
+            return plan_mission(points_from_store(store, status), cfg.followup, transit, inspect, home_ll)
+        except MissionError as exc:
+            raise HTTPException(400, str(exc))
+
+    @app.get("/api/mission")
+    def mission_preview(transit: float | None = None, inspect: float | None = None,
+                        status: str = "followup", home: str | None = None):
+        """Route order, distance, time estimate and warnings, without writing a file."""
+        d = _plan(transit, inspect, status, home).summary()
+        d["defaults"] = {"transit_height_m": cfg.followup.transit_height_m,
+                         "inspect_height_m": cfg.followup.inspect_height_m,
+                         "max_height_m": cfg.followup.max_height_m}
+        return d
+
+    @app.get("/api/mission.kmz")
+    def mission_kmz(transit: float | None = None, inspect: float | None = None,
+                    status: str = "followup", home: str | None = None):
+        plan = _plan(transit, inspect, status, home)
+        name = f"followup_{len(plan.points)}pts_{plan.transit_height_m:g}-{plan.inspect_height_m:g}m.kmz"
+        return Response(build_kmz(plan, cfg.followup), media_type="application/vnd.google-earth.kmz",
+                        headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
     @app.get("/files/{rel_path:path}")
     def files(rel_path: str):

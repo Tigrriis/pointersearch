@@ -12,6 +12,8 @@ import sqlite3
 from pathlib import Path
 from typing import Iterable
 
+STATUSES = ("pending", "accepted", "followup", "rejected")
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS images (
     id INTEGER PRIMARY KEY,
@@ -41,7 +43,7 @@ CREATE TABLE IF NOT EXISTS candidates (
     lat REAL, lon REAL,
     thumb TEXT,
     extra TEXT,
-    status TEXT DEFAULT 'pending',   -- pending | accepted | rejected
+    status TEXT DEFAULT 'pending',   -- pending | accepted | followup | rejected
     note TEXT,
     decided_at TEXT,
     range_m REAL,            -- horizontal distance from the aircraft to the sighting
@@ -135,7 +137,7 @@ class Store:
         return _cand_row(r) if r else None
 
     def set_decision(self, cid: int, status: str, note: str | None = None) -> bool:
-        if status not in ("pending", "accepted", "rejected"):
+        if status not in STATUSES:
             raise ValueError(status)
         with self.conn:
             cur = self.conn.execute(
@@ -189,7 +191,10 @@ class Store:
         return len({find(i) for i in pts})
 
     def list_groups(self, status: str | None = None) -> list[dict]:
-        """One record per object: best sighting, member ids, frames seen, combined status."""
+        """One record per object: best sighting, member ids, frames seen, combined status.
+
+        ``status`` may be one status or a comma-separated list ("accepted,followup")."""
+        wanted = {x.strip() for x in status.split(",") if x.strip()} if status else set()
         cands = self.list_candidates()
         groups: dict[int, list[dict]] = {}
         for c in cands:
@@ -203,11 +208,13 @@ class Store:
             statuses = {c["status"] for c in members}
             if "accepted" in statuses:
                 g_status = "accepted"
+            elif "followup" in statuses:
+                g_status = "followup"
             elif statuses == {"rejected"}:
                 g_status = "rejected"
             else:
                 g_status = "pending"
-            if status and g_status != status:
+            if wanted and g_status not in wanted:
                 continue
             out.append({
                 "id": gid, "status": g_status, "lat": nearest["lat"], "lon": nearest["lon"],
@@ -224,7 +231,7 @@ class Store:
         return out
 
     def set_group_decision(self, gid: int, status: str, note: str | None = None) -> int:
-        if status not in ("pending", "accepted", "rejected"):
+        if status not in STATUSES:
             raise ValueError(status)
         with self.conn:
             cur = self.conn.execute(

@@ -5,6 +5,7 @@
     pointersearch watch   missions/2025-06-01-blue-mtns /srv/uploads
     pointersearch serve   missions/2025-06-01-blue-mtns --tiles ~/tiles/bluemtns
     pointersearch export  missions/2025-06-01-blue-mtns --format gpx --status accepted
+    pointersearch mission missions/2025-06-01-blue-mtns --transit 90 --inspect 60
     pointersearch merge   missions/2025-06-01-blue-mtns
     pointersearch demo    demo
 """
@@ -70,6 +71,49 @@ def cmd_export(a):
         print(f"wrote {a.output}")
     else:
         sys.stdout.write(body)
+
+
+def cmd_mission(a):
+    from .mission import MissionError, build_kmz, default_home, plan_mission, points_from_store
+    from .store import Store
+    wd = Path(a.workdir)
+    cfg = Config.load(wd)
+    st = Store(wd)
+    st.regroup(cfg.group_radius_m)
+    home = None
+    if a.home:
+        lat, lon = (float(v) for v in a.home.split(","))
+        home = (lat, lon)
+    else:
+        home = default_home(st)
+    try:
+        plan = plan_mission(points_from_store(st, a.status), cfg.followup, a.transit, a.inspect, home)
+    except MissionError as exc:
+        sys.exit(f"cannot build mission: {exc}")
+    out = Path(a.output or wd / "followup.kmz")
+    out.write_bytes(build_kmz(plan, cfg.followup))
+    s = plan.summary()
+    print(f"wrote {out}")
+    print(f"  {s['objects']} object(s), {s['waypoints']} waypoints, transit {s['transit_height_m']:g} m / "
+          f"inspect {s['inspect_height_m']:g} m (relative to take-off)")
+    print(f"  about {s['distance_m']} m and {s['duration_min']} min; lenses {cfg.followup.photo_lenses}")
+    for o in s["order"]:
+        print(f"   {o['seq']:>2}. G{o['object_id']:<5} {o['lat']:.6f},{o['lon']:.6f}  {o['label']}")
+    for w in s["warnings"]:
+        print(f"  ! {w}")
+    print("import in DJI Pilot 2: Flight Route > Import Route (KMZ/KML), then check it on the map before flying")
+
+
+def cmd_wpml_info(a):
+    from .mission import MissionError, wpml_info
+    try:
+        info = wpml_info(a.kmz)
+    except (MissionError, OSError) as exc:
+        sys.exit(f"cannot read {a.kmz}: {exc}")
+    print(json.dumps(info, indent=2))
+    keys = ("drone_enum", "drone_sub_enum", "payload_enum", "payload_sub_enum", "payload_position", "wpml_version")
+    print("\npaste into pointersearch.json to match this aircraft:")
+    print(json.dumps({"followup": {k: info[k] for k in keys if info.get(k) is not None}}, indent=2))
 
 
 def cmd_merge(a):
@@ -201,10 +245,22 @@ def main(argv=None):
 
     s = sub.add_parser("export", help="export candidates as GPX/KML/GeoJSON")
     s.add_argument("workdir"); s.add_argument("--format", choices=["gpx", "kml", "geojson"], default="gpx")
-    s.add_argument("--status", default="accepted", help="accepted | pending | rejected | all")
+    s.add_argument("--status", default="accepted", help="accepted | followup | pending | rejected | all, or a comma list")
     s.add_argument("--by", choices=["group", "sighting"], default="group",
                    help="one point per object (group) or per detection (sighting)")
     s.add_argument("-o", "--output"); s.set_defaults(fn=cmd_export)
+
+    s = sub.add_parser("mission", help="write a DJI Pilot 2 waypoint mission (KMZ) over follow-up objects")
+    s.add_argument("workdir")
+    s.add_argument("--transit", type=float, help="height between objects, m above take-off (default from config: 90)")
+    s.add_argument("--inspect", type=float, help="height over each object, m above take-off (default from config: 60)")
+    s.add_argument("--status", default="followup", help="which objects to visit, e.g. followup or followup,accepted")
+    s.add_argument("--home", help="take-off position 'lat,lon' used to order the route (default: first frame)")
+    s.add_argument("-o", "--output")
+    s.set_defaults(fn=cmd_mission)
+
+    s = sub.add_parser("wpml-info", help="print aircraft/payload codes from a route exported by DJI Pilot 2")
+    s.add_argument("kmz"); s.set_defaults(fn=cmd_wpml_info)
 
     s = sub.add_parser("merge", help="merge all overlays into one georeferenced PNG (+ world file)")
     s.add_argument("workdir"); s.add_argument("-o", "--output"); s.add_argument("--max-px", type=int, default=12000)

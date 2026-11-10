@@ -1,7 +1,7 @@
 :root { --bg:#14181d; --panel:#1d2329; --text:#e6e9ec; --muted:#9aa4ad; --accent:#f5a623;
-        --ok:#3dc47e; --bad:#6c757d; --pending:#f5a623; --rx:#f06292; --bright:#ffb74d; --thermal:#ef5350; }
+        --ok:#3dc47e; --bad:#6c757d; --pending:#f5a623; --rx:#f06292; --bright:#ffb74d; --thermal:#ef5350; --follow:#4fc3f7; }
 * { box-sizing: border-box; }
-html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text);
+html, body { height: 100%; margin: 0; overflow: hidden; background: var(--bg); color: var(--text);
   font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
 header { display:flex; gap:16px; align-items:center; padding:8px 12px; background:var(--panel);
   border-bottom:1px solid #000; flex-wrap:wrap; }
@@ -11,7 +11,9 @@ header { display:flex; gap:16px; align-items:center; padding:8px 12px; backgroun
 .controls label { color:var(--muted); cursor:pointer; }
 .btn { background:#2b333b; color:var(--text); text-decoration:none; padding:4px 10px; border-radius:4px; border:1px solid #3a444e; }
 .btn:hover { background:#374049; }
-main { display:grid; grid-template-columns: 1fr 380px; height: calc(100% - 46px); }
+body { display:flex; flex-direction:column; }
+header { flex:0 0 auto; }
+main { display:grid; grid-template-columns: 1fr 380px; flex:1 1 auto; min-height:0; }
 #map { background:#0c0f12; }
 aside { background:var(--panel); border-left:1px solid #000; display:flex; flex-direction:column; min-height:0; }
 .detail { padding:10px; border-bottom:1px solid #000; min-height:120px; }
@@ -20,6 +22,7 @@ aside { background:var(--panel); border-left:1px solid #000; display:flex; flex-
 .detail .actions { display:flex; gap:8px; margin-top:6px; }
 .detail button { flex:1; padding:8px; border:0; border-radius:4px; font-weight:600; cursor:pointer; color:#fff; }
 .accept { background:var(--ok); } .reject { background:var(--bad); } .undo { background:#455a64; }
+button.followup { background:var(--follow); color:#06222e !important; }
 .hint { color:var(--muted); }
 #list { list-style:none; margin:0; padding:0; overflow:auto; flex:1; }
 #list li { display:grid; grid-template-columns: 64px 1fr auto; gap:8px; padding:6px 10px; border-bottom:1px solid #0b0e11; cursor:pointer; align-items:center; }
@@ -29,8 +32,25 @@ aside { background:var(--panel); border-left:1px solid #000; display:flex; flex-
 .badge { padding:2px 6px; border-radius:10px; font-size:11px; font-weight:700; color:#111; }
 .badge.rx { background:var(--rx);} .badge.bright { background:var(--bright);} .badge.thermal { background:var(--thermal); color:#fff;}
 .st { font-size:11px; color:var(--muted); }
-.st.accepted { color:var(--ok);} .st.rejected { color:var(--bad);}
+.st.accepted { color:var(--ok);} .st.rejected { color:var(--bad);} .st.followup { color:var(--follow);}
 .leaflet-container { font: inherit; }
 @media (max-width: 800px) { main { grid-template-columns: 1fr; grid-template-rows: 55% 45%; } aside { border-left:0; border-top:1px solid #000; } }
 .strip { display:flex; gap:4px; margin-top:4px; overflow-x:auto; }
 .strip img { width:64px; height:64px; object-fit:cover; border-radius:3px; flex:0 0 auto; }
+button.btn { font: inherit; cursor: pointer; }
+.btn.primary { background: var(--follow); color:#06222e; border-color: var(--follow); font-weight:600; }
+.btn.disabled { opacity:.4; pointer-events:none; }
+dialog { background: var(--panel); color: var(--text); border:1px solid #3a444e; border-radius:8px; padding:18px 20px; width:min(520px, 92vw); }
+dialog::backdrop { background: rgba(0,0,0,.55); }
+dialog h3 { margin:0 0 6px; }
+dialog .row { display:flex; gap:16px; flex-wrap:wrap; margin:12px 0; align-items:center; }
+dialog .row.end { justify-content:flex-end; margin-bottom:0; }
+dialog input[type=number] { width:5.5em; background:#12161a; color:var(--text); border:1px solid #3a444e; border-radius:4px; padding:4px 6px; font:inherit; }
+dialog .summary { font-size:13px; line-height:1.5; }
+dialog .summary .warn { color: var(--accent); }
+dialog .summary .err { color: #ff8a80; }
+dialog .summary ol { margin:6px 0 0; padding-left:22px; max-height:150px; overflow:auto; color:var(--muted); }
+.detail .actions { gap:6px; }
+.detail .actions button { padding:8px 2px; font-size:13px; white-space:nowrap; }
+.detail { flex:0 0 auto; }
+.detail > img { max-height:38vh; object-fit:contain; }

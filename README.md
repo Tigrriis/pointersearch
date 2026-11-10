@@ -25,6 +25,9 @@ Use cases: missing persons (alive or deceased), lost dogs and other animals.
 6. **Review** on a local Leaflet map: thumbnails, accept/reject with keyboard,
    filters per detector, live refresh while the aircraft is still flying.
 7. **Export** accepted objects as GPX, KML or GeoJSON for ground teams.
+8. **Follow-up missions**: tag objects for a second look and export a waypoint
+   route for DJI Pilot 2 that revisits each one at a lower height
+   (see [docs/FOLLOWUP_MISSIONS.md](docs/FOLLOWUP_MISSIONS.md)).
 
 ## Install
 
@@ -94,6 +97,12 @@ Hand accepted points to ground teams:
 
 ```bash
 pointersearch export missions/2025-06-01-grose-valley --format gpx -o accepted.gpx
+```
+
+A waypoint route back over the objects tagged follow-up (heights in metres above take-off):
+
+```bash
+pointersearch mission missions/2025-06-01-grose-valley --transit 90 --inspect 60
 ```
 
 One georeferenced mosaic for the incident map:

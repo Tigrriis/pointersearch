@@ -82,8 +82,41 @@ class MosaicConfig:
 
 
 @dataclass
+class FollowupConfig:
+    """Follow-up waypoint mission exported for DJI Pilot 2 (WPML KMZ).
+
+    Heights are metres relative to the take-off point, not above the ground under
+    the aircraft. On sloping terrain raise both (up to ``max_height_m``).
+    """
+
+    transit_height_m: float = 90.0      # height flown between objects
+    inspect_height_m: float = 60.0      # height held over each object for photos
+    max_height_m: float = 120.0         # hard ceiling; export refuses anything above
+    transit_speed_ms: float = 10.0
+    vertical_speed_ms: float = 3.0      # speed on the descend / climb legs over an object
+    hover_s: float = 3.0                # settle time before the photo
+    gimbal_pitch_deg: float = -90.0
+    photo_lenses: str = "wide,zoom,ir"  # lenses stored at each object
+    finish_action: str = "goHome"       # goHome | noAction | autoLand | gotoFirstWaypoint
+    rc_lost_action: str = "goBack"      # goBack | landing | hover | goContinue
+    approach_offset_m: float = 0.0      # >0 shifts the transit-height waypoints back along
+                                        # the inbound leg, if Pilot 2 rejects stacked points
+    max_flight_min: float = 30.0        # warn when the estimate exceeds this
+    # Aircraft / payload codes written into the file. The Matrice 4T values below are
+    # the ones community tools use; DJI's public table predates the aircraft. Confirm
+    # with `pointersearch wpml-info <route exported from Pilot 2>.kmz`.
+    drone_enum: int = 99
+    drone_sub_enum: int = 1
+    payload_enum: int = 89
+    payload_sub_enum: int = 0
+    payload_position: int = 0
+    wpml_version: str = "1.0.6"
+
+
+@dataclass
 class Config:
     camera: CameraDefaults = field(default_factory=CameraDefaults)
+    followup: FollowupConfig = field(default_factory=FollowupConfig)
     rx: RXConfig = field(default_factory=RXConfig)
     bright: BrightColourConfig = field(default_factory=BrightColourConfig)
     thermal: ThermalConfig = field(default_factory=ThermalConfig)

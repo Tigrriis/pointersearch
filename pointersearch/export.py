@@ -32,7 +32,8 @@ def to_gpx(cands: list[dict]) -> str:
         out.append(f'  <wpt lat="{c["lat"]:.7f}" lon="{c["lon"]:.7f}">')
         out.append(f"    <name>{escape(_name(c))}</name>")
         out.append(f"    <desc>{escape(_desc(c))}</desc>")
-        out.append(f"    <sym>{'Flag, Red' if c['status'] == 'accepted' else 'Flag, Blue'}</sym>")
+        sym = {"accepted": "Flag, Red", "followup": "Flag, Green"}.get(c["status"], "Flag, Blue")
+        out.append(f"    <sym>{sym}</sym>")
         out.append("  </wpt>")
     out.append("</gpx>")
     return "\n".join(out) + "\n"
@@ -80,5 +81,6 @@ def export(store: Store, fmt: str, status: str | None = "accepted", by: str = "g
     if by == "group":
         records = [_flatten_group(g) for g in store.list_groups(status=st)]
     else:
-        records = store.list_candidates(status=st)
+        wanted = {x.strip() for x in st.split(",")} if st else None
+        records = [c for c in store.list_candidates() if not wanted or c["status"] in wanted]
     return fn(records), mime

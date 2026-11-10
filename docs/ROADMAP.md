@@ -11,6 +11,9 @@
   Mosquitto + MinIO) on the base laptop so DJI Pilot 2 auto-uploads stills over a
   local hotspot. Live telemetry gives the aircraft track on the review map.
 - [x] Candidate de-duplication across overlapping frames (grouped within `group_radius_m`)
+- [x] Follow-up tag and DJI Pilot 2 waypoint mission export (transit / inspection heights)
+- Verify the exported route on a Matrice 4T: aircraft codes, stacked waypoints, lens names.
+- Terrain-aware follow-up heights from a DEM.
 - Aircraft track and searched-area coverage layer from frame footprints.
 
 ## Phase 3: learned detection

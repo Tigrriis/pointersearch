@@ -20,6 +20,7 @@
     <label title="hide objects whose best colour-anomaly score is below this">min RX <input type="number" id="f-minscore" value="0" min="0" step="10" style="width:5em"></label>
     <label title="hide objects seen in fewer frames than this">min frames <select id="f-minframes"><option>1</option><option>2</option><option>3</option></select></label>
     <span class="stats" id="shown"></span>
+    <button class="btn" id="mission-btn" title="waypoint mission over follow-up objects for DJI Pilot 2">Mission…</button>
     <a class="btn" href="/api/export.gpx?status=accepted" download>GPX</a>
     <a class="btn" href="/api/export.kml?status=accepted" download>KML</a>
     <a class="btn" href="/api/export.geojson?status=all" download>GeoJSON</a>
@@ -29,11 +30,26 @@
   <div id="map"></div>
   <aside>
     <div class="detail" id="detail">
-      <div class="hint">Select a candidate. Keys: <b>A</b> accept, <b>R</b> reject, <b>U</b> undo, <b>N</b>/<b>P</b> next/prev, <b>F</b> full image.</div>
+      <div class="hint">Select a candidate. Keys: <b>A</b> accept, <b>W</b> follow-up waypoint, <b>R</b> reject, <b>U</b> undo, <b>N</b>/<b>P</b> next/prev, <b>F</b> full image.</div>
     </div>
     <ul id="list"></ul>
   </aside>
 </main>
+<dialog id="mission-dlg">
+  <form method="dialog">
+    <h3>Follow-up mission</h3>
+    <p class="hint">A waypoint route over every object tagged follow-up, for import into DJI Pilot 2. Heights are metres above the take-off point, not above the ground under the aircraft.</p>
+    <div class="row">
+      <label>Transit height <input type="number" id="m-transit" min="5" step="5"> m</label>
+      <label>Inspection height <input type="number" id="m-inspect" min="5" step="5"> m</label>
+    </div>
+    <div id="m-summary" class="summary"></div>
+    <div class="row end">
+      <button class="btn" value="cancel">Close</button>
+      <a class="btn primary" id="m-download" href="#" download>Download KMZ</a>
+    </div>
+  </form>
+</dialog>
 <script src="/static/vendor/leaflet/leaflet.js"></script>
 <script src="/static/app.js"></script>
 </body>

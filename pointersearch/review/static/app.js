@@ -1,6 +1,7 @@
 /* pointersearch review UI. Plain JS, no build step, fully offline. */
 (function () {
   const COLORS = { rx: '#f06292', bright: '#ffb74d', thermal: '#ef5350' };
+  const STATUS_LABEL = { followup: 'follow-up' };
   const state = { cands: [], markers: new Map(), overlays: new Map(), sel: null, lastId: 0, fitted: false };
 
   const map = L.map('map', { zoomControl: true, maxZoom: 24 });
@@ -9,6 +10,7 @@
   const overlayGroup = L.layerGroup().addTo(map);
   const markerGroup = L.layerGroup().addTo(map);
   const footprintGroup = L.layerGroup().addTo(map);
+  const routeGroup = L.layerGroup().addTo(map);
 
   fetch('/api/summary').then(r => r.json()).then(s => {
     if (s.tiles) L.tileLayer('/tiles/{z}/{x}/{y}.png', { maxNativeZoom: 19, maxZoom: 24 }).addTo(map);
@@ -40,7 +42,7 @@
     $('mission').textContent = summary.mission || '';
     const c = summary.candidates || {};
     const g = summary.groups || {};
-    $('stats').textContent = `${summary.images_ok} images · ${summary.n_groups || 0} objects (${g.pending || 0} pending · ${g.accepted || 0} accepted · ${g.rejected || 0} rejected) from ${Object.values(c).reduce((a, b) => a + b, 0)} sightings`;
+    $('stats').textContent = `${summary.images_ok} images · ${summary.n_groups || 0} objects (${g.pending || 0} pending · ${g.accepted || 0} accepted · ${g.followup || 0} follow-up · ${g.rejected || 0} rejected) from ${Object.values(c).reduce((a, b) => a + b, 0)} sightings`;
 
     overlays.forEach(o => {
       if (!state.overlays.has(o.id)) {
@@ -86,10 +88,11 @@
     shown.forEach(c => {
       const color = COLORS[c.detector] || '#fff';
       const m = L.circleMarker([c.lat, c.lon], {
-        radius: c.status === 'accepted' ? 9 : 6, color: c.status === 'accepted' ? '#3dc47e' : color,
+        radius: c.status === 'accepted' ? 9 : c.status === 'followup' ? 8 : 6,
+        color: c.status === 'accepted' ? '#3dc47e' : c.status === 'followup' ? '#4fc3f7' : color,
         weight: c.status === 'rejected' ? 1 : 2, fillColor: color, fillOpacity: c.status === 'rejected' ? 0.15 : 0.6,
       }).on('click', () => select(c.id, false));
-      m.bindTooltip(`${c.detectors.join('+')} ${c.score.toFixed(1)} · ${c.n_frames} frame${c.n_frames > 1 ? 's' : ''} · ${c.status}`);
+      m.bindTooltip(`${c.detectors.join('+')} ${c.score.toFixed(1)} · ${c.n_frames} frame${c.n_frames > 1 ? 's' : ''} · ${STATUS_LABEL[c.status] || c.status}`);
       markerGroup.addLayer(m);
       state.markers.set(c.id, m);
 
@@ -99,7 +102,7 @@
       li.innerHTML = `<img loading="lazy" src="/files/${c.best.thumb}">
         <div><div class="title">${c.detectors.map(d => `<span class="badge ${d}">${d}</span>`).join(' ')} ${c.score.toFixed(1)}</div>
         <div class="sub">${c.area_m2 ?? '?'} m² · seen in ${c.n_frames} frame${c.n_frames > 1 ? 's' : ''}${c.min_range_m != null ? ' · ' + Math.round(c.min_range_m) + ' m from aircraft' : ''}</div></div>
-        <div class="st ${c.status}">${c.status}</div>`;
+        <div class="st ${c.status}">${STATUS_LABEL[c.status] || c.status}</div>`;
       li.addEventListener('click', () => select(c.id, true));
       list.appendChild(li);
     });
@@ -122,17 +125,18 @@
   function renderDetail() {
     const c = state.cands.find(x => x.id === state.sel);
     const el = $('detail');
-    if (!c) { el.innerHTML = '<div class="hint">Select a candidate. Keys: <b>A</b> accept, <b>R</b> reject, <b>U</b> undo, <b>N</b>/<b>P</b> next/prev, <b>F</b> full image.</div>'; return; }
+    if (!c) { el.innerHTML = '<div class="hint">Select a candidate. Keys: <b>A</b> accept, <b>W</b> follow-up waypoint, <b>R</b> reject, <b>U</b> undo, <b>N</b>/<b>P</b> next/prev, <b>F</b> full image.</div>'; return; }
     const b = c.best;
     const temp = b.extra && b.extra.peak_temp_c != null ? ` · ${b.extra.peak_temp_c.toFixed(1)} °C` : '';
     const strip = c.thumbs.length > 1 ? `<div class="strip">${c.thumbs.slice(1).map(t => `<img src="/files/${t}">`).join('')}</div>` : '';
     el.innerHTML = `<img src="/files/${b.thumb}">${strip}
       <div class="meta"><span>${c.detectors.map(d => `<span class="badge ${d}">${d}</span>`).join(' ')} score ${c.score.toFixed(2)}${temp}</span>
-      <span class="st ${c.status}">${c.status}</span></div>
+      <span class="st ${c.status}">${STATUS_LABEL[c.status] || c.status}</span></div>
       <div class="meta"><span>${c.lat.toFixed(6)}, ${c.lon.toFixed(6)}</span><span>${c.area_m2 ?? '?'} m² · ${c.n_sightings} sighting${c.n_sightings > 1 ? 's' : ''} in ${c.n_frames} frame${c.n_frames > 1 ? 's' : ''}</span></div>
       <div class="meta"><span>${baseName(b.image_path)}</span><a class="btn" href="/image/${b.image_id}" target="_blank">full image</a></div>
-      <div class="actions"><button class="accept">Accept (A)</button><button class="reject">Reject (R)</button><button class="undo">Undo (U)</button></div>`;
+      <div class="actions"><button class="accept">Accept (A)</button><button class="followup" title="tag for a second look on another flight">Follow-up (W)</button><button class="reject">Reject (R)</button><button class="undo">Undo (U)</button></div>`;
     el.querySelector('.accept').onclick = () => decide('accepted');
+    el.querySelector('.followup').onclick = () => decide('followup');
     el.querySelector('.reject').onclick = () => decide('rejected');
     el.querySelector('.undo').onclick = () => decide('pending');
   }
@@ -147,6 +151,7 @@
     if (i >= 0) state.cands[i] = updated;
     if (status !== 'pending') step(1, true);
     render();
+    drawRoute();
   }
 
   function step(dir, keepIfNone) {
@@ -163,9 +168,10 @@
   }
 
   document.addEventListener('keydown', e => {
-    if (e.target.tagName === 'INPUT') return;
+    if (e.target.tagName === 'INPUT' || $('mission-dlg').open) return;
     const k = e.key.toLowerCase();
     if (k === 'a') decide('accepted');
+    else if (k === 'w') decide('followup');
     else if (k === 'r') decide('rejected');
     else if (k === 'u') decide('pending');
     else if (k === 'n' || k === 'j') step(1);
@@ -173,6 +179,62 @@
     else if (k === 'f' && state.sel) { const c = state.cands.find(x => x.id === state.sel); window.open(`/image/${c.best.image_id}`); }
   });
 
-  refresh();
+  // ---- follow-up mission -------------------------------------------------
+  const missionQuery = () => {
+    const q = new URLSearchParams();
+    if ($('m-transit').value) q.set('transit', $('m-transit').value);
+    if ($('m-inspect').value) q.set('inspect', $('m-inspect').value);
+    return q.toString();
+  };
+
+  let routeSeq = 0;
+  async function drawRoute() {
+    // Dashed line through the follow-up objects in planned order.
+    const seq = ++routeSeq;
+    if (!state.cands.some(c => c.status === 'followup')) { routeGroup.clearLayers(); return; }
+    const r = await fetch('/api/mission?' + missionQuery());
+    if (seq !== routeSeq) return;            // a newer request is in flight
+    routeGroup.clearLayers();
+    if (!r.ok) return;
+    const plan = await r.json();
+    if (seq !== routeSeq) return;
+    const pts = (plan.home ? [plan.home] : []).concat(plan.order.map(o => [o.lat, o.lon]));
+    L.polyline(pts, { color: '#4fc3f7', weight: 2, dashArray: '6 6', interactive: false }).addTo(routeGroup);
+    plan.order.forEach(o => L.marker([o.lat, o.lon], { interactive: false, icon: L.divIcon({
+      className: '', iconSize: [18, 18], iconAnchor: [-6, 20],
+      html: `<div style="background:#4fc3f7;color:#06222e;border-radius:9px;width:18px;height:18px;line-height:18px;text-align:center;font-size:11px;font-weight:700">${o.seq}</div>` }) }).addTo(routeGroup));
+  }
+
+  async function updateMission() {
+    const el = $('m-summary'), dl = $('m-download');
+    const r = await fetch('/api/mission?' + missionQuery());
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      el.innerHTML = `<div class="err">${e.detail || 'Cannot build mission.'}</div>`;
+      dl.classList.add('disabled');
+      return;
+    }
+    const p = await r.json();
+    dl.classList.remove('disabled');
+    dl.href = '/api/mission.kmz?' + missionQuery();
+    el.innerHTML = `<div><b>${p.objects}</b> object${p.objects > 1 ? 's' : ''} · ${p.waypoints} waypoints · about ${p.distance_m} m · about <b>${p.duration_min} min</b></div>`
+      + p.warnings.map(w => `<div class="warn">⚠ ${w}</div>`).join('')
+      + `<ol>${p.order.map(o => `<li>G${o.object_id} · ${o.lat.toFixed(6)}, ${o.lon.toFixed(6)} · ${o.label}</li>`).join('')}</ol>`;
+    drawRoute();
+  }
+
+  $('mission-btn').addEventListener('click', async () => {
+    if (!$('m-transit').value) {
+      const s = await fetch('/api/summary').then(r => r.json());
+      $('m-transit').value = s.followup.transit_height_m;
+      $('m-inspect').value = s.followup.inspect_height_m;
+      $('m-transit').max = $('m-inspect').max = s.followup.max_height_m;
+    }
+    $('mission-dlg').showModal();
+    updateMission();
+  });
+  ['m-transit', 'm-inspect'].forEach(id => $(id).addEventListener('input', updateMission));
+
+  refresh().then(drawRoute);
   setInterval(refresh, 5000);
 })();
