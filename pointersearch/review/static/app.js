@@ -25,10 +25,12 @@
   const $ = id => document.getElementById(id);
   const filters = () => ({
     rx: $('f-rx').checked, bright: $('f-bright').checked, thermal: $('f-thermal').checked,
-    rejected: $('f-rejected').checked, overlays: $('f-overlays').checked, routes: $('f-routes').checked,
+    rejected: $('f-rejected').checked, map: $('f-map').value, routes: $('f-routes').checked,
     minScore: +$('f-minscore').value || 0, minFrames: +$('f-minframes').value || 1,
   });
-  const FILTER_IDS = ['f-rx', 'f-bright', 'f-thermal', 'f-rejected', 'f-overlays', 'f-routes', 'f-minscore', 'f-minframes'];
+  const FILTER_IDS = ['f-rx', 'f-bright', 'f-thermal', 'f-rejected', 'f-map', 'f-routes', 'f-minscore', 'f-minframes'];
+  // which lenses each "map" choice lays down, bottom first
+  const MAP_LENSES = { colour: ['wide', 'unknown'], thermal: ['thermal'], zoom: ['wide', 'unknown', 'zoom'], none: [] };
   try {  // remember filter settings per browser
     const saved = JSON.parse(localStorage.getItem('ps-filters') || '{}');
     FILTER_IDS.forEach(id => { if (id in saved) { const el = $(id); el.type === 'checkbox' ? el.checked = saved[id] : el.value = saved[id]; } });
@@ -53,20 +55,25 @@
     $('empty').hidden = summary.images > 0 || importState.busy;
     const st = summary.stale || { total: 0 };
     $('stale').hidden = !st.total || importState.busy;
-    if (st.total) $('stale-text').textContent = st.thermal === st.total
-      ? `${st.total} thermal image${st.total > 1 ? 's were' : ' was'} searched by an older version that missed red-hot areas.`
-      : `${st.total} image${st.total > 1 ? 's were' : ' was'} searched by an older version.`;
+    if (st.total) $('stale-text').textContent = `${st.total} photo${st.total > 1 ? 's were' : ' was'} processed by an older version. Processing them again lines the map up and updates the search.`;
     const c = summary.candidates || {};
     const g = summary.groups || {};
     $('stats').textContent = `${summary.images_ok} images · ${summary.n_groups || 0} objects (${g.pending || 0} pending · ${g.accepted || 0} accepted · ${g.followup || 0} follow-up · ${g.rejected || 0} rejected) from ${Object.values(c).reduce((a, b) => a + b, 0)} sightings`;
 
+    // one patch per photo; replaced when the photo is lined up or processed again
     overlays.forEach(o => {
-      if (!state.overlays.has(o.id)) {
-        const layer = L.imageOverlay('files/' + o.png, o.bounds, { opacity: 0.95, interactive: false, pane: 'imagery' });
-        state.overlays.set(o.id, layer);
-        overlayGroup.addLayer(layer);
-      }
+      const key = o.png + JSON.stringify(o.bounds);
+      const had = state.overlays.get(o.id);
+      if (had && had.key === key) return;
+      if (had) overlayGroup.removeLayer(had.layer);
+      state.overlays.set(o.id, { key, source: o.source, shown: false,
+        layer: L.imageOverlay('files/' + o.png + '?v=' + encodeURIComponent(o.bounds.flat().map(v => v.toFixed(6)).join('_')), o.bounds, { opacity: 1, interactive: false, pane: 'imagery' }) });
+      state.mapKey = null;
     });
+    const al = summary.align;
+    state.alignText = al && al.links ? ` · map lined up: ${al.aligned}/${al.photos} photos` : '';
+    $('stats').title = al && al.links ? `Photos were matched to their neighbours at ${al.links} overlaps. Matched points were ${al.before_m} m apart as recorded and are ${al.after_m} m apart now.` : '';
+    $('stats').textContent += state.alignText;
     footprintGroup.clearLayers();
     images.filter(i => i.footprint).forEach(i => {
       L.polygon(i.footprint, { color: '#5d7a96', weight: 1, fill: false, opacity: 0.6, interactive: false }).addTo(footprintGroup);
@@ -113,7 +120,14 @@
 
   function render() {
     const f = filters();
-    f.overlays ? map.addLayer(overlayGroup) : map.removeLayer(overlayGroup);
+    // lay down the lenses chosen in "map", lower lenses first so zoom sits on colour
+    const lenses = MAP_LENSES[f.map] || MAP_LENSES.colour;
+    const mapKey = f.map + ':' + state.overlays.size;
+    if (state.mapKey !== mapKey) {
+      overlayGroup.clearLayers();
+      lenses.forEach(lens => state.overlays.forEach(o => { if (o.source === lens) overlayGroup.addLayer(o.layer); }));
+      state.mapKey = mapKey;
+    }
     f.routes ? map.addLayer(savedRouteGroup) : map.removeLayer(savedRouteGroup);
     const list = $('list');
     list.innerHTML = '';
@@ -365,18 +379,20 @@
   if (location.pathname.startsWith('/m/')) $('home-link').hidden = false;
 
   function showImport(st) {
-    const busy = st.state === 'running' || st.state === 'watching';
+    const busy = st.state === 'running' || st.state === 'aligning' || st.state === 'watching';
     const wasBusy = importState.busy;
     importState.busy = busy;
     $('i-start').hidden = busy; $('i-stop').hidden = !busy;
     $('i-folder').disabled = $('i-watch').disabled = $('i-force').disabled = $('i-browse').disabled = busy;
     const chip = $('import-chip');
     chip.hidden = !busy;
-    chip.textContent = st.state === 'watching' ? 'watching for images' : `importing ${st.done}/${st.total}`;
+    chip.textContent = st.state === 'watching' ? 'watching for images' : st.state === 'aligning' ? 'lining up the map' : `importing ${st.done}/${st.total}`;
     let html = '';
     if (st.state === 'running') {
       html = `<progress max="${Math.max(1, st.total)}" value="${st.done}"></progress>
         <div>Processing ${st.done} of ${st.total}${st.current ? ' · ' + st.current : ''}</div>`;
+    } else if (st.state === 'aligning') {
+      html = `<progress></progress><div>Lining the photos up on the map…</div>`;
     } else if (st.state === 'error') {
       html = `<div class="err">${st.message || 'The import failed.'}</div>`;
     } else if (st.message) {

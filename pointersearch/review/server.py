@@ -63,6 +63,7 @@ def create_app(workdir: str | Path, tiles_dir: str | Path | None = None, mission
         s = store.summary()
         s["mission"] = mission_name or workdir.name
         s["version"] = __version__
+        s["align"] = store.kv("align_stats")
         stale = store.stale_images(DETECTOR_VERSION)
         s["stale"] = {"total": len(stale), "thermal": sum(1 for i in stale if i["source"] == "thermal")}
         s["routes"] = len(list_routes(workdir))
@@ -74,7 +75,18 @@ def create_app(workdir: str | Path, tiles_dir: str | Path | None = None, mission
 
     @app.get("/api/images")
     def images():
-        return store.list_images()
+        """Photos with their ground footprint, at the lined-up place where there is one."""
+        from ..align import Correction
+        from ..geo import LocalFrame
+        origin = store.origin()
+        frame = LocalFrame(*origin) if origin else None
+        out = store.list_images()
+        for img in out:
+            if frame and img.get("align") and img.get("footprint"):
+                c = Correction.from_dict(img["align"])
+                ne = c.apply([frame.to_ne(lat, lon) for lat, lon in img["footprint"]])
+                img["footprint"] = [list(frame.to_latlon(n, e)) for n, e in ne]
+        return out
 
     @app.get("/api/overlays")
     def overlays():

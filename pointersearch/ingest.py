@@ -109,6 +109,9 @@ class IngestJob:
                     skipped += 1
                     self._set(message=f"{f.name}: {exc}")
                 self._set(done=i + 1, added=added, skipped=skipped)
+            if added:
+                self._set(state="aligning", current=None, message="lining the photos up on the map")
+                pipeline.align_mission()
             if not watch:
                 msg = (f"{added} image(s) {'processed again' if force else 'added'}"
                        + (f", {skipped} already imported or unusable" if skipped else ""))
@@ -125,6 +128,7 @@ class IngestJob:
             while not self._stop.wait(2.0):
                 n = watcher.poll()
                 if n:
+                    pipeline.align_mission()
                     added += n
                     self._set(added=added, message=f"{added} image(s) added; watching for new images")
             self._set(state="stopped", message=f"stopped watching; {added} image(s) added")

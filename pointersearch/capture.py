@@ -28,6 +28,18 @@ def capture_key(path: str | Path) -> str | None:
     return None
 
 
+def has_wide_sibling(path: str | Path) -> bool:
+    """True if a wide-lens file from the same shutter press sits beside this file."""
+    p = Path(path)
+    m = _DJI_NAME.match(p.stem)
+    if not m:
+        return False
+    for other in p.parent.glob(f"*_{m.group(2)}_[WwVv].*"):
+        if other != p and _DJI_NAME.match(other.stem) and same_moment(p, other):
+            return True
+    return False
+
+
 def _name_time(path: str | Path) -> datetime | None:
     m = _DJI_NAME.match(Path(path).stem)
     if not m:

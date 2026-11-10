@@ -38,12 +38,26 @@ def cmd_init(a):
     print(f"initialised {wd}\n  config: {path}\n  edit thresholds there, then run `pointersearch process`")
 
 
+def _report_alignment(st: dict):
+    if st.get("links"):
+        print(f"map alignment: {st['aligned']} of {st['photos']} photos lined up from {st['links']} overlaps; "
+              f"matched points were {st['before_m']} m apart, now {st['after_m']} m")
+    elif st.get("photos"):
+        print("map alignment: no overlapping photos could be matched; photos are placed as recorded")
+
+
+def cmd_align(a):
+    from .pipeline import Pipeline
+    _report_alignment(Pipeline(a.workdir).align_mission())
+
+
 def cmd_process(a):
     from .pipeline import Pipeline
     p = Pipeline(a.workdir)
     total = 0
     for src in a.sources:
         total += p.process_path(src, force=a.force)
+    _report_alignment(p.align_mission())
     s = p.store.summary()
     print(f"processed {total} new image(s); {s['images_ok']} images, candidates: {s['candidates']}")
 
@@ -145,24 +159,34 @@ def cmd_wpml_info(a):
 
 
 def cmd_merge(a):
+    """One georeferenced picture per lens: colour, and thermal where there are thermal photos."""
+    import cv2
     from .mosaic import Overlay, merge_overlays
     from .store import Store
     wd = Path(a.workdir)
     st = Store(wd)
-    ovs = []
-    for o in st.overlays():
-        b = o["bounds"]
-        import cv2
-        img = cv2.imread(str(wd / o["png"]), cv2.IMREAD_UNCHANGED)
-        if img is None:
+    lenses = {"colour": ("wide", "unknown"), "thermal": ("thermal",)}
+    base = Path(a.output or "mosaic.png")
+    wrote = 0
+    for name, sources in lenses.items():
+        ovs = []
+        for o in st.overlays():
+            if o["source"] not in sources:
+                continue
+            img = cv2.imread(str(wd / o["png"]), cv2.IMREAD_UNCHANGED)
+            if img is None:
+                continue
+            b = o["bounds"]
+            ovs.append(Overlay(str(wd / o["png"]), b[0][0], b[0][1], b[1][0], b[1][1], img.shape[1], img.shape[0]))
+        if not ovs:
             continue
-        ovs.append(Overlay(str(wd / o["png"]), b[0][0], b[0][1], b[1][0], b[1][1], img.shape[1], img.shape[0]))
-    out = wd / (a.output or "mosaic.png")
-    res = merge_overlays(ovs, out, max_px=a.max_px)
-    if res is None:
-        print("no overlays to merge")
-    else:
-        print(f"wrote {out} ({res.width_px}x{res.height_px}) + world file {out.with_suffix('.pgw')}")
+        out = wd / (base if name == "colour" else base.with_name(f"{base.stem}_{name}{base.suffix}"))
+        res = merge_overlays(ovs, out, max_px=a.max_px)
+        if res is not None:
+            wrote += 1
+            print(f"wrote {out} ({res.width_px}x{res.height_px}, {len(ovs)} {name} photos) + world file")
+    if not wrote:
+        print("no photos on the map to merge")
 
 
 def cmd_info(a):
@@ -237,6 +261,7 @@ def cmd_demo(a):
     print(f"generated {len(manifest['images'])} synthetic images in {img_dir}")
     p = Pipeline(wd)
     n = p.process_path(img_dir)
+    _report_alignment(p.align_mission())
     s = p.store.summary()
     print(f"processed {n} images; candidates: {s['candidates']}")
     print("planted targets:")
@@ -258,6 +283,9 @@ def main(argv=None):
     s.add_argument("workdir"); s.add_argument("sources", nargs="+")
     s.add_argument("--force", action="store_true", help="reprocess images already in the database")
     s.set_defaults(fn=cmd_process)
+
+    s = sub.add_parser("align", help="re-solve how photos line up on the map (runs automatically after processing)")
+    s.add_argument("workdir"); s.set_defaults(fn=cmd_align)
 
     s = sub.add_parser("watch", help="poll a folder and process new images as they land")
     s.add_argument("workdir"); s.add_argument("folder")

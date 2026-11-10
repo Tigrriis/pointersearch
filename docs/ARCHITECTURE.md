@@ -20,6 +20,10 @@ SD card / upload folder
   review/server.py FastAPI + vendored Leaflet, accept/reject, export.py (GPX/KML/GeoJSON)
 ```
 
+> The map is no longer placed from the aircraft's record alone. Photos are now lined up
+> with each other; see [MOSAIC.md](MOSAIC.md). The section below explains the first
+> placement, which is still the starting point.
+
 ## Why direct georeferencing instead of a real orthomosaic
 
 A structure-from-motion orthomosaic needs 70-80 % overlap, a complete block of

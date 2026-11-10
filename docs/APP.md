@@ -52,6 +52,13 @@ On the review map press *Add images…*, choose the folder that holds the photos
   that changes how images are searched. Accept, follow-up and reject decisions
   are kept; undecided detections are replaced.
 
+## The map
+
+**map** in the header chooses which photos are laid on the map: *colour*,
+*thermal*, *colour + zoom* or *none*. After photos are added they are lined up
+with each other; the header then shows *map lined up: N/M photos*. How this
+works, what it fixes and its limits are in [MOSAIC.md](MOSAIC.md).
+
 ## Reading the list
 
 Each object shows a score per detector, because the detectors measure different

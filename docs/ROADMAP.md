@@ -21,6 +21,11 @@
   across batteries.
 - [x] Saved routes shown on the review map
 - [x] Switch each object between the wide, zoom and thermal frames of the same shutter press
+- [x] Photos lined up with each other by feature matching (shift, turn, scale per photo),
+  soft seams, brightness matching, thermal map following the colour map
+- Map: serve the mosaic as tiles instead of one picture per photo (large missions), export
+  as a KMZ ground overlay from the review map, terrain model for steep ground.
+- Hand-off to OpenDroneMap for a true orthophoto from mapping flights.
 - [x] Red-hot palette areas as thermal hits; per-detector scores; search-again prompt
 - Radiometric thermal (temperatures from the R-JPEG through DJI's Thermal SDK) so hits can be
   limited to body temperature instead of "hottest in frame".

@@ -17,7 +17,9 @@
     <label><input type="checkbox" id="f-bright" checked> bright</label>
     <label><input type="checkbox" id="f-thermal" checked> thermal</label>
     <label><input type="checkbox" id="f-rejected"> show rejected</label>
-    <label><input type="checkbox" id="f-overlays" checked> imagery</label>
+    <label title="which photos are laid on the map">map <select id="f-map">
+      <option value="colour">colour</option><option value="thermal">thermal</option>
+      <option value="zoom">colour + zoom</option><option value="none">none</option></select></label>
     <label title="show the routes saved in this mission"><input type="checkbox" id="f-routes" checked> routes</label>
     <label title="hide objects whose best colour-anomaly score is below this">min RX <input type="number" id="f-minscore" value="0" min="0" step="10" style="width:5em"></label>
     <label title="hide objects seen in fewer frames than this">min frames <select id="f-minframes"><option>1</option><option>2</option><option>3</option></select></label>
@@ -36,7 +38,7 @@
     <div id="map"></div>
     <div class="stale" id="stale" hidden>
       <span id="stale-text"></span>
-      <button class="btn primary" id="stale-btn">Search them again</button>
+      <button class="btn primary" id="stale-btn">Process them again</button>
     </div>
     <div class="empty" id="empty" hidden>
       <span><b>No images in this mission yet.</b></span>

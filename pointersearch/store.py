@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 import math
 import sqlite3
+
+import numpy as np
 from pathlib import Path
 from typing import Iterable
 
@@ -51,6 +53,14 @@ CREATE TABLE IF NOT EXISTS candidates (
     range_m REAL,            -- horizontal distance from the aircraft to the sighting
     group_id INTEGER         -- object id shared by sightings of the same thing across frames
 );
+CREATE TABLE IF NOT EXISTS links (            -- matched points between two overlapping photos
+    a INTEGER NOT NULL, b INTEGER NOT NULL,
+    n INTEGER NOT NULL,
+    pts BLOB NOT NULL,                        -- float32 (n, 4): north, east in a; north, east in b
+    lum_a REAL, lum_b REAL,
+    PRIMARY KEY (a, b)
+);
+CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT);
 CREATE INDEX IF NOT EXISTS idx_candidates_status ON candidates(status);
 CREATE INDEX IF NOT EXISTS idx_candidates_image ON candidates(image_id);
 """
@@ -75,8 +85,16 @@ class Store:
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_candidates_group ON candidates(group_id)")
         if "capture_key" not in {r["name"] for r in self.conn.execute("PRAGMA table_info(images)")}:
             self.conn.execute("ALTER TABLE images ADD COLUMN capture_key TEXT")
-        if "proc_version" not in {r["name"] for r in self.conn.execute("PRAGMA table_info(images)")}:
-            self.conn.execute("ALTER TABLE images ADD COLUMN proc_version INTEGER")
+        have = {r["name"] for r in self.conn.execute("PRAGMA table_info(images)")}
+        for col, typ in (("proc_version", "INTEGER"), ("align", "TEXT"), ("aligned_png", "TEXT"),
+                         ("aligned_bounds", "TEXT")):
+            if col not in have:
+                self.conn.execute(f"ALTER TABLE images ADD COLUMN {col} {typ}")
+        have = {r["name"] for r in self.conn.execute("PRAGMA table_info(candidates)")}
+        for col in ("lat_raw", "lon_raw"):                      # position before photo alignment
+            if col not in have:
+                self.conn.execute(f"ALTER TABLE candidates ADD COLUMN {col} REAL")
+        self.conn.execute("UPDATE candidates SET lat_raw=lat, lon_raw=lon WHERE lat_raw IS NULL")
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_images_capture ON images(capture_key)")
         # missions processed before lens switching existed: derive the key from the file name
         from .capture import capture_key
@@ -111,8 +129,9 @@ class Store:
         with self.conn:
             self.conn.execute("DELETE FROM candidates WHERE image_id=? AND status='pending'", (image_id,))
             self.conn.executemany(
-                "INSERT INTO candidates (image_id, detector, score, px, py, bbox, area_m2, lat, lon, thumb, extra, range_m) "
-                "VALUES (:image_id, :detector, :score, :px, :py, :bbox, :area_m2, :lat, :lon, :thumb, :extra, :range_m)",
+                "INSERT INTO candidates (image_id, detector, score, px, py, bbox, area_m2, lat, lon, thumb, extra, "
+                "range_m, lat_raw, lon_raw) VALUES (:image_id, :detector, :score, :px, :py, :bbox, :area_m2, :lat, "
+                ":lon, :thumb, :extra, :range_m, :lat, :lon)",
                 [{"range_m": None, **c, "image_id": image_id, "bbox": json.dumps(c["bbox"]),
                   "extra": json.dumps(c.get("extra", {}))} for c in candidates],
             )
@@ -165,10 +184,55 @@ class Store:
         return [_image_row(r) for r in rows]
 
     def overlays(self) -> list[dict]:
+        """Map patches, one per photo: the aligned version where there is one."""
         rows = self.conn.execute(
-            "SELECT id, overlay_png, overlay_bounds FROM images WHERE overlay_png IS NOT NULL ORDER BY captured_at, id"
-        ).fetchall()
-        return [{"id": r["id"], "png": r["overlay_png"], "bounds": json.loads(r["overlay_bounds"])} for r in rows]
+            "SELECT id, source, overlay_png, overlay_bounds, aligned_png, aligned_bounds FROM images "
+            "WHERE overlay_png IS NOT NULL ORDER BY captured_at, id").fetchall()
+        return [{"id": r["id"], "source": r["source"] or "unknown", "aligned": bool(r["aligned_png"]),
+                 "png": r["aligned_png"] or r["overlay_png"],
+                 "bounds": json.loads(r["aligned_bounds"] or r["overlay_bounds"])} for r in rows]
+
+    # ---- photo alignment -----------------------------------------------
+    def origin(self, lat: float | None = None, lon: float | None = None) -> tuple[float, float] | None:
+        """The mission's local map origin. Set once, from the first photo."""
+        r = self.conn.execute("SELECT value FROM kv WHERE key='origin'").fetchone()
+        if r:
+            return tuple(json.loads(r["value"]))
+        if lat is None or lon is None:
+            return None
+        with self.conn:
+            self.conn.execute("INSERT OR IGNORE INTO kv (key, value) VALUES ('origin', ?)", (json.dumps([lat, lon]),))
+        return self.origin()
+
+    def kv(self, key: str):
+        r = self.conn.execute("SELECT value FROM kv WHERE key=?", (key,)).fetchone()
+        return json.loads(r["value"]) if r else None
+
+    def save_links(self, image_id: int, links: list) -> None:
+        with self.conn:
+            self.conn.execute("DELETE FROM links WHERE a=? OR b=?", (image_id, image_id))
+            self.conn.executemany(
+                "INSERT OR REPLACE INTO links (a, b, n, pts, lum_a, lum_b) VALUES (?,?,?,?,?,?)",
+                [(l.a, l.b, len(l.pa), np.hstack([l.pa, l.pb]).astype(np.float32).tobytes(), l.lum_a, l.lum_b)
+                 for l in links])
+
+    def all_links(self) -> list:
+        from .align import Link
+        out = []
+        for r in self.conn.execute("SELECT * FROM links"):
+            pts = np.frombuffer(r["pts"], dtype=np.float32).reshape(-1, 4)
+            out.append(Link(r["a"], r["b"], pts[:, :2], pts[:, 2:], r["lum_a"] or 0.0, r["lum_b"] or 0.0))
+        return out
+
+    def set_alignment(self, image_id: int, align: dict | None, png: str | None, bounds: list | None) -> None:
+        self.conn.execute("UPDATE images SET align=?, aligned_png=?, aligned_bounds=? WHERE id=?",
+                          (json.dumps(align) if align else None, png, json.dumps(bounds) if bounds else None, image_id))
+
+    def move_candidates(self, image_id: int, to_latlon) -> None:
+        """Re-place an image's detections. ``to_latlon(lat_raw, lon_raw)`` -> (lat, lon)."""
+        rows = self.conn.execute("SELECT id, lat_raw, lon_raw FROM candidates WHERE image_id=?", (image_id,)).fetchall()
+        self.conn.executemany("UPDATE candidates SET lat=?, lon=? WHERE id=?",
+                              [(*to_latlon(r["lat_raw"], r["lon_raw"]), r["id"]) for r in rows if r["lat_raw"] is not None])
 
     # ---- candidates ----------------------------------------------------
     def list_candidates(self, status: str | None = None, detector: str | None = None,
@@ -320,6 +384,8 @@ def _image_row(r: sqlite3.Row) -> dict:
     d = dict(r)
     d["footprint"] = json.loads(d["footprint"]) if d.get("footprint") else None
     d["overlay_bounds"] = json.loads(d["overlay_bounds"]) if d.get("overlay_bounds") else None
+    d["aligned_bounds"] = json.loads(d["aligned_bounds"]) if d.get("aligned_bounds") else None
+    d["align"] = json.loads(d["align"]) if d.get("align") else None
     return d
 
 

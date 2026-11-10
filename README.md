@@ -14,8 +14,11 @@ Use cases: missing persons (alive or deceased), lost dogs and other animals.
 2. **Georeference** every frame directly from the DJI metadata (GPS, relative
    altitude, gimbal attitude). No photogrammetry, a few metres accuracy, under a
    second per image.
-3. **Quick mosaic**: each frame is projected onto the ground as a north-up image
-   overlay; `merge` writes one PNG with a world file for QGIS or CalTopo.
+3. **Map**: each frame is projected onto the ground, then the frames are lined
+   up with each other by matching features where they overlap, which corrects
+   GPS, heading and canopy-height errors as photos arrive. Colour and thermal
+   maps, switchable. `merge` writes one PNG per lens with a world file for QGIS
+   or CalTopo. See [docs/MOSAIC.md](docs/MOSAIC.md).
 4. **Detect** candidates in each frame:
    * `rx` - Reed-Xiaoli colour anomaly (what is statistically unusual for this scene)
    * `bright` - saturated, non-vegetation colours (hi-vis, jackets, packs, tents)

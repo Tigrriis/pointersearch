@@ -222,11 +222,12 @@ def test_images_searched_by_an_older_detector_can_be_searched_again(mission, tmp
     con.execute("UPDATE images SET proc_version=NULL"); con.commit(); con.close()
 
     c = TestClient(create_app(tmp_path))
-    assert c.get("/api/summary").json()["stale"] == {"total": n_thermal, "thermal": n_thermal}   # only thermal changed
+    n_all = len(mission["manifest"]["images"])
+    assert c.get("/api/summary").json()["stale"] == {"total": n_all, "thermal": n_thermal}
     r = c.post("/api/ingest/refresh")
-    assert r.status_code == 200 and r.json()["total"] == n_thermal
+    assert r.status_code == 200 and r.json()["total"] == n_all
     s = wait_for(lambda: c.get("/api/ingest").json(), {"done", "error"})
-    assert s["state"] == "done" and s["added"] == n_thermal and "processed again" in s["message"]
+    assert s["state"] == "done" and s["added"] == n_all and "processed again" in s["message"]
     assert c.get("/api/summary").json()["stale"]["total"] == 0
     assert c.post("/api/ingest/refresh").status_code == 400                    # nothing left to do
     # the reviewer's decision survived

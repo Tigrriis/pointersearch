@@ -74,7 +74,7 @@ def create_hub(root: str | Path, tiles_dir: str | Path | None = None) -> FastAPI
                 card = mission_card(p.name, p, missions.store(p.name))
                 sub = missions.get(p.name)
                 job = getattr(sub.state, "ingest", None) if sub else None
-                if job is not None and job.status()["state"] in ("running", "watching"):
+                if job is not None and job.status()["state"] in ("running", "aligning", "watching"):
                     card["importing"] = job.status()["state"]
                 out.append(card)
         out.sort(key=lambda m: m["modified_ts"], reverse=True)

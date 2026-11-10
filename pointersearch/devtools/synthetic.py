@@ -73,7 +73,7 @@ class Target:
     name: str = "target"
 
 
-def _ground_texture(rng: np.random.Generator, size_m: float, res_m: float) -> np.ndarray:
+def _ground_texture(rng: np.random.Generator, size_m: float, res_m: float, detail: bool = False) -> np.ndarray:
     n = int(size_m / res_m)
     base = rng.normal(0, 1, (n // 8 + 1, n // 8 + 1)).astype(np.float32)
     base = cv2.resize(base, (n, n), interpolation=cv2.INTER_CUBIC)
@@ -85,7 +85,20 @@ def _ground_texture(rng: np.random.Generator, size_m: float, res_m: float) -> np
     green = np.array([55, 105, 70], np.float32)
     img = brown[None, None, :] * (1 - v[..., None]) + green[None, None, :] * v[..., None]
     img += rng.normal(0, 6, img.shape).astype(np.float32)
-    return np.clip(img, 0, 255).astype(np.uint8)
+    img = np.clip(img, 0, 255).astype(np.uint8)
+    if detail:
+        # rocks, clumps and fallen timber in ground colours: the distinct local detail that
+        # real terrain has and that feature matching between photos relies on
+        for _ in range(n * n // 900):
+            x, y = int(rng.integers(0, n)), int(rng.integers(0, n))
+            shade = tuple(int(c) for c in np.clip(img[y, x].astype(np.float32) * rng.uniform(0.55, 1.45), 0, 255))
+            if rng.random() < 0.85:
+                cv2.circle(img, (x, y), int(rng.integers(2, 8)), shade, -1)
+            else:
+                ang, length = rng.uniform(0, np.pi), int(rng.integers(15, 60))
+                cv2.line(img, (x, y), (int(x + length * np.cos(ang)), int(y + length * np.sin(ang))), shade, int(rng.integers(1, 4)))
+        img = cv2.GaussianBlur(img, (0, 0), 0.7)
+    return img
 
 
 def render_frame(ground: np.ndarray, ground_res_m: float, ground_origin_ne: tuple[float, float],
@@ -130,7 +143,9 @@ def generate_mission(out_dir: Path, lat0: float = -33.7312, lon0: float = 150.31
                      area_n_m: float = 240.0, area_e_m: float = 320.0, rel_alt: float = 80.0,
                      overlap: float = 0.3, with_thermal: bool = True, seed: int = 7,
                      rgb_size: tuple[int, int] = (1600, 1200), thermal_size: tuple[int, int] = (640, 512),
-                     with_zoom: bool = False, zoom_f35: float = 70.0) -> dict:
+                     with_zoom: bool = False, zoom_f35: float = 70.0,
+                     pose_noise: tuple[float, float] | None = None, alt_bias_m: float = 0.0,
+                     detail: bool = False) -> dict:
     """Write a synthetic mission to ``out_dir``. Returns planted target positions."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -139,7 +154,7 @@ def generate_mission(out_dir: Path, lat0: float = -33.7312, lon0: float = 150.31
     pad = 120.0
     size_m = max(area_n_m, area_e_m) + 2 * pad
     res_m = 0.08
-    ground = _ground_texture(rng, size_m, res_m)
+    ground = _ground_texture(rng, size_m, res_m, detail)
     origin_ne = (area_n_m / 2 + pad, -area_e_m / 2 - pad)  # NW corner of ground raster
 
     targets = [
@@ -158,19 +173,31 @@ def generate_mission(out_dir: Path, lat0: float = -33.7312, lon0: float = 150.31
     lines = int(math.ceil(area_n_m / step_n)) + 1
     per_line = int(math.ceil(area_e_m / step_e)) + 1
 
+    # Optional errors in what the aircraft *records*, to exercise mosaic alignment. The
+    # pictures are always rendered from the true pose. ``pose_noise`` = (position sigma in
+    # metres, yaw sigma in degrees). ``alt_bias_m`` is added to the recorded height, as when
+    # the visible surface (a forest canopy) is that much closer than take-off level.
+    noise = np.random.default_rng(seed + 1000)
     idx = 0
-    manifest = {"targets": [], "images": []}
+    manifest = {"targets": [], "images": [], "truth": {}}
     for li in range(lines):
         n = -area_n_m / 2 + li * step_n
         yaw = 0.0 if li % 2 == 0 else 180.0  # fly east on even lines, west on odd
         for j in range(per_line):
             e = -area_e_m / 2 + j * step_e if li % 2 == 0 else area_e_m / 2 - j * step_e
             idx += 1
-            lat, lon = frame.to_latlon(n, e)
             stamp = f"DJI_20250601063{idx // 60:01d}{idx % 60:02d}_{idx:04d}"
             img = render_frame(ground, res_m, origin_ne, (n, e), rel_alt, yaw, -90.0, w, h, rgb_f35, targets)
-            xmp = XMP_TEMPLATE.format(lat=lat, lon=lon, abs_alt=rel_alt + 410.0, rel_alt=rel_alt, roll=0.0,
-                                      yaw=yaw, pitch=-90.0, source="WideCamera")
+            true_n, true_e, true_yaw, true_alt = n, e, yaw, rel_alt
+            manifest["truth"][stamp] = {"north": n, "east": e, "yaw": yaw, "height": rel_alt}
+            rec_n, rec_e, rec_yaw = n, e, yaw
+            if pose_noise:
+                rec_n, rec_e = n + noise.normal(0, pose_noise[0]), e + noise.normal(0, pose_noise[0])
+                rec_yaw = yaw + noise.normal(0, pose_noise[1])
+            rec_alt = rel_alt + alt_bias_m
+            lat, lon = frame.to_latlon(rec_n, rec_e)
+            xmp = XMP_TEMPLATE.format(lat=lat, lon=lon, abs_alt=rec_alt + 410.0, rel_alt=rec_alt, roll=0.0,
+                                      yaw=rec_yaw, pitch=-90.0, source="WideCamera")
             p = out_dir / f"{stamp}_W.JPG"
             write_jpeg_with_xmp(p, img, xmp, rgb_f35)
             manifest["images"].append(str(p))
@@ -178,15 +205,15 @@ def generate_mission(out_dir: Path, lat0: float = -33.7312, lon0: float = 150.31
                 tw, th_ = thermal_size
                 timg = render_frame(ground, res_m, origin_ne, (n, e), rel_alt, yaw, -90.0, tw, th_, th_f35,
                                     targets, thermal=True)
-                xmp = XMP_TEMPLATE.format(lat=lat, lon=lon, abs_alt=rel_alt + 410.0, rel_alt=rel_alt, roll=0.0,
-                                          yaw=yaw, pitch=-90.0, source="InfraredCamera")
+                xmp = XMP_TEMPLATE.format(lat=lat, lon=lon, abs_alt=rec_alt + 410.0, rel_alt=rec_alt, roll=0.0,
+                                          yaw=rec_yaw, pitch=-90.0, source="InfraredCamera")
                 tp = out_dir / f"{stamp}_T.JPG"
                 write_jpeg_with_xmp(tp, timg, xmp, th_f35)
                 manifest["images"].append(str(tp))
             if with_zoom:
                 zimg = render_frame(ground, res_m, origin_ne, (n, e), rel_alt, yaw, -90.0, w, h, zoom_f35, targets)
-                xmp = XMP_TEMPLATE.format(lat=lat, lon=lon, abs_alt=rel_alt + 410.0, rel_alt=rel_alt, roll=0.0,
-                                          yaw=yaw, pitch=-90.0, source="ZoomCamera")
+                xmp = XMP_TEMPLATE.format(lat=lat, lon=lon, abs_alt=rec_alt + 410.0, rel_alt=rec_alt, roll=0.0,
+                                          yaw=rec_yaw, pitch=-90.0, source="ZoomCamera")
                 zp = out_dir / f"{stamp}_Z.JPG"
                 write_jpeg_with_xmp(zp, zimg, xmp, zoom_f35)
                 manifest["images"].append(str(zp))

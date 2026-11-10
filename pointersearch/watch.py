@@ -43,7 +43,8 @@ class Watcher:
     def run(self, interval_s: float = 2.0):
         log.info("watching %s every %.1fs (Ctrl-C to stop)", self.folder, interval_s)
         while True:
-            self.poll()
+            if self.poll():
+                self.pipeline.align_mission()
             time.sleep(interval_s)
 
 

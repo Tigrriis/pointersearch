@@ -38,7 +38,7 @@
       if (o.followup) parts.push(`${o.followup} follow-up`);
       bits.push(`${plural(m.n_objects, 'object')} (${parts.join(', ')})`);
     }
-    const busy = m.importing ? `<span class="chip">${m.importing === 'watching' ? 'watching for images' : 'importing images'}</span>` : '';
+    const busy = m.importing ? `<span class="chip">${m.importing === 'watching' ? 'watching for images' : m.importing === 'aligning' ? 'lining up the map' : 'importing images'}</span>` : '';
     const when = m.modified ? `last changed ${m.modified.replace('T', ' ')}` : '';
     return `<div class="card mission">
       <div class="m-main">

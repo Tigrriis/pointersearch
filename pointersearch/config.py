@@ -139,11 +139,46 @@ class RouteConfig:
 
 
 @dataclass
+class AlignConfig:
+    """Lining photos up with each other before they go on the map (see align.py)."""
+
+    enabled: bool = True
+    max_dim: int = 1600                 # photos are searched for features at this size
+    features: int = 2000
+    ratio: float = 0.75                 # how much better a match must be than the runner-up
+    ransac_m: float = 1.0               # matches within this of one consistent fit are kept
+    min_inliers: int = 15
+    min_inlier_ratio: float = 0.25
+    keep_per_link: int = 40
+    max_neighbours: int = 8
+    max_pair_turn_deg: float = 8.0
+    max_height_ratio: float = 0.8       # surface may be this fraction of the flying height above take-off level
+    # how firmly each photo is held to the aircraft's record
+    prior_shift_m: float = 3.0          # GPS
+    prior_turn_deg: float = 3.0         # heading
+    prior_scale: float = 0.3            # loose: the height of the visible surface is unknown
+    match_sigma_m: float = 0.4
+    # a link must agree with what the GPS positions allow, within this many metres plus this
+    # fraction of the distance between the two cameras (surface height varying across the area)
+    link_tolerance_m: float = 8.0
+    link_tolerance_frac: float = 0.15
+    max_link_residual_m: float = 2.0    # links the solution leaves further apart than this are dropped
+    # corrections beyond these are treated as false matches and discarded
+    max_shift_m: float = 20.0
+    max_turn_deg: float = 10.0
+    min_scale: float = 0.35
+    max_scale: float = 1.6
+    exposure: bool = True               # even out brightness between photos
+    feather: float = 0.12               # fraction of each photo's edge that fades out on the map
+
+
+@dataclass
 class Config:
     camera: CameraDefaults = field(default_factory=CameraDefaults)
     flight: FlightConfig = field(default_factory=FlightConfig)
     followup: FollowupConfig = field(default_factory=FollowupConfig)
     route: RouteConfig = field(default_factory=RouteConfig)
+    align: AlignConfig = field(default_factory=AlignConfig)
     rx: RXConfig = field(default_factory=RXConfig)
     bright: BrightColourConfig = field(default_factory=BrightColourConfig)
     thermal: ThermalConfig = field(default_factory=ThermalConfig)
