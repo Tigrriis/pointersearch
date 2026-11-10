@@ -87,7 +87,7 @@ header input[type=text] { background:#12161a; color:var(--text); border:1px soli
 .planner .actions .btn { flex:1; text-align:center; padding:8px 6px; }
 .vtx { background:#fff; color:#111; border:2px solid #06222e; border-radius:50%; width:20px; height:20px; line-height:17px;
   text-align:center; font-size:11px; font-weight:700; box-shadow:0 1px 3px rgba(0,0,0,.6); cursor:grab; box-sizing:border-box; }
-.endcap { background:#06222e; color:#fff; border-radius:4px; padding:1px 5px; font-size:11px; font-weight:700; white-space:nowrap; }
+.endcap { width:max-content; background:#06222e; color:#fff; border-radius:4px; padding:1px 5px; font-size:11px; font-weight:700; white-space:nowrap; }
 body.plan #map { cursor:crosshair; }
 
 /* ---- start screen ---- */
@@ -116,11 +116,19 @@ dialog .path-row input { flex:1; min-width:0; background:#12161a; color:var(--te
 dialog label.check { display:flex; gap:8px; align-items:center; color:var(--text); cursor:pointer; }
 progress { width:100%; height:10px; accent-color:var(--follow); }
 #i-status { font-size:13px; margin-top:10px; min-height:3.2em; }
-.empty { position:absolute; z-index:500; left:50%; top:50%; transform:translate(-50%,-50%); background:var(--panel); border:1px solid #3a444e;
-  border-radius:8px; padding:20px 24px; text-align:center; max-width:360px; box-shadow:0 6px 24px rgba(0,0,0,.5); }
-.empty .row { display:flex; gap:8px; justify-content:center; margin-top:12px; }
+.empty { position:absolute; z-index:500; left:50%; bottom:28px; transform:translateX(-50%); background:var(--panel);
+  border:1px solid #3a444e; border-radius:8px; padding:8px 12px; display:flex; gap:12px; align-items:center;
+  width:max-content; max-width:calc(100% - 24px); flex-wrap:wrap; justify-content:center; box-shadow:0 6px 24px rgba(0,0,0,.5); }
+.empty .row { display:flex; gap:8px; }
 #map-wrap { position:relative; min-height:0; min-width:0; }
 #map-wrap > #map { position:absolute; inset:0; }
+
+.route-label { width:max-content; background:rgba(20,24,29,.85); color:#d1c4e9; border:1px solid #7e57c2; border-radius:4px; padding:1px 6px;
+  font-size:11px; font-weight:600; white-space:nowrap; cursor:pointer; }
+.leaflet-popup-content-wrapper, .leaflet-popup-tip { background:var(--panel); color:var(--text); }
+.leaflet-popup-content { margin:10px 12px; font-size:13px; line-height:1.5; }
+.leaflet-popup-content .btn { display:inline-block; margin:6px 6px 0 0; color:var(--text); }
+.leaflet-popup-content .sub { color:var(--muted); }
 
 /* ---- saved routes ---- */
 .saved h3 { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin:0 0 6px; }

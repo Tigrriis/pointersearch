@@ -41,6 +41,12 @@ listed at the top of the panel:
 - **KMZ** downloads the file for Pilot 2 without opening the route.
 - **✕** deletes it, after a confirmation.
 
+Saved routes also appear on the review map as violet lines, drawn over the
+imagery and under the candidate markers, so you can see what was planned against
+what was flown and found. Click a route or its name for its height, time and
+photo count, a button to open it in the planner, and its KMZ. The *routes* tick
+box in the header hides them.
+
 Each route is one small JSON file in `<mission>/routes/`. It records what was
 drawn and chosen, not the generated waypoints, so it stays editable and the
 waypoints are recalculated every time it is opened or downloaded:

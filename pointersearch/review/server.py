@@ -226,9 +226,43 @@ def create_app(workdir: str | Path, tiles_dir: str | Path | None = None, mission
                         headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
     # ---- saved routes ------------------------------------------------------
+    _path_cache: dict[str, tuple] = {}
+
+    def _route_layer(meta: dict) -> dict:
+        """A saved route with its flight path, for drawing on a map. Cached until the file changes."""
+        try:
+            st_ = (workdir / "routes" / f"{meta['id']}.json").stat()
+            key = (st_.st_mtime_ns, st_.st_size)
+        except OSError:
+            key = (meta.get("updated"), meta.get("n_points"))
+        hit = _path_cache.get(meta["id"])
+        if hit and hit[0] == key:
+            return hit[1]
+        r = load_route(workdir, meta["id"]) or {}
+        st = r.get("settings") or {}
+        out = dict(meta, points=r.get("points") or [], path=[], error=None)
+        try:
+            req = RouteRequest(mode=r.get("mode", "line"), points=out["points"], name=meta["name"],
+                               **{k: st.get(k) for k in ("height_m", "speed_ms", "lens", "front_overlap",
+                                                         "side_overlap", "angle_deg", "interval_m", "interval_s",
+                                                         "photo_lenses")})
+            plan = _route(req)
+            out["path"] = [list(p) for p in plan.path]
+            s = plan.summary()
+            out["summary"] = {k: s[k] for k in ("waypoints", "n_photos", "distance_m", "duration_min", "height_m",
+                                                "interval_m", "track_spacing_m")}
+        except HTTPException as exc:
+            out["error"] = str(exc.detail)
+        except Exception:
+            out["error"] = "the saved route file has invalid settings"
+        _path_cache[meta["id"]] = (key, out)
+        return out
+
     @app.get("/api/routes")
-    def routes_list():
-        return list_routes(workdir)
+    def routes_list(paths: bool = False):
+        """Saved routes. With ``paths=1`` each also carries its flight path for map display."""
+        routes = list_routes(workdir)
+        return [_route_layer(r) for r in routes] if paths else routes
 
     @app.post("/api/routes")
     def routes_save(req: RouteRequest):

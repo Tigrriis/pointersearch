@@ -18,6 +18,7 @@
     <label><input type="checkbox" id="f-thermal" checked> thermal</label>
     <label><input type="checkbox" id="f-rejected"> show rejected</label>
     <label><input type="checkbox" id="f-overlays" checked> imagery</label>
+    <label title="show the routes saved in this mission"><input type="checkbox" id="f-routes" checked> routes</label>
     <label title="hide objects whose best colour-anomaly score is below this">min RX <input type="number" id="f-minscore" value="0" min="0" step="10" style="width:5em"></label>
     <label title="hide objects seen in fewer frames than this">min frames <select id="f-minframes"><option>1</option><option>2</option><option>3</option></select></label>
     <span class="stats" id="shown"></span>
@@ -34,8 +35,7 @@
   <div id="map-wrap">
     <div id="map"></div>
     <div class="empty" id="empty" hidden>
-      <b>No images in this mission yet.</b>
-      <div class="hint" style="margin-top:6px">Plan a route to fly, or add the images from a flight.</div>
+      <span><b>No images in this mission yet.</b></span>
       <div class="row"><a class="btn" href="plan">Plan route</a><button class="btn primary" id="empty-import">Add images…</button></div>
     </div>
   </div>

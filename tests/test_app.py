@@ -139,6 +139,29 @@ def test_saved_route_round_trip_and_edit(tmp_path):
     assert c.get("/api/routes").json() == [] and not f.exists()
 
 
+def test_saved_routes_with_paths_for_the_review_map(tmp_path):
+    Config().save(tmp_path)
+    c = TestClient(create_app(tmp_path))
+    assert c.get("/api/routes", params={"paths": 1}).json() == []
+    c.post("/api/routes", json={"mode": "area", "points": AREA, "name": "North block"})
+    c.post("/api/routes", json={"mode": "line", "points": AREA[:2], "name": "Creek line"})
+    assert all("path" not in r for r in c.get("/api/routes").json())           # plain listing stays light
+
+    layers = {r["id"]: r for r in c.get("/api/routes", params={"paths": 1}).json()}
+    area, line = layers["north-block"], layers["creek-line"]
+    assert area["points"] == AREA and len(area["path"]) == area["summary"]["waypoints"] >= 4 and area["error"] is None
+    assert len(line["path"]) == 2 and line["mode"] == "line"
+
+    # an edit is reflected (the cache follows the file), and an unflyable file still shows its drawing
+    c.post("/api/routes", json={"mode": "line", "points": AREA[:3], "name": "Creek line", "overwrite": True})
+    assert len({r["id"]: r for r in c.get("/api/routes", params={"paths": 1}).json()}["creek-line"]["path"]) == 3
+    f = tmp_path / "routes" / "north-block.json"
+    doc = json.loads(f.read_text()); doc["settings"]["height_m"] = 500; doc["updated"] = "2099-01-01T00:00:00"
+    f.write_text(json.dumps(doc))
+    bad = {r["id"]: r for r in c.get("/api/routes", params={"paths": 1}).json()}["north-block"]
+    assert bad["path"] == [] and bad["points"] == AREA and "ceiling" in bad["error"]
+
+
 def test_saved_route_files_tolerate_junk(tmp_path):
     assert slug("  Creek line — North #2 ") == "creek-line-north-2" and slug("!!!") == "route"
     save_route(tmp_path, "Good", "line", AREA[:2], {"height_m": 90})

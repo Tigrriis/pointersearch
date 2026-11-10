@@ -60,6 +60,18 @@
     redraw(true);
     loadSaved();
     zoomHint();
+    openFromHash();
+  }
+
+  // plan#route=<id> opens that saved route (used by the review map)
+  async function openFromHash() {
+    const m = /^#route=([a-z0-9-]+)$/.exec(location.hash);
+    if (!m) return;
+    history.replaceState(null, '', location.pathname);
+    if (m[1] === state.currentId && !state.dirty) return;
+    if (state.dirty && state.pts.length && !confirm('Open this route and discard the unsaved changes to the current drawing?')) return;
+    const res = await fetch('api/routes/' + m[1]);
+    if (res.ok) applyRoute(await res.json());
   }
 
   // ---- persistence ---------------------------------------------------------

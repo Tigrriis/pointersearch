@@ -7,7 +7,11 @@
   const map = L.map('map', { zoomControl: true, maxZoom: 24 });
   map.setView([0, 0], 2);
   L.control.scale({ imperial: false }).addTo(map);
+  // draw order: base map < imagery < saved routes < footprints, candidates, follow-up route
+  map.createPane('imagery').style.zIndex = 300;
+  map.createPane('routes').style.zIndex = 390;
   const overlayGroup = L.layerGroup().addTo(map);
+  const savedRouteGroup = L.layerGroup().addTo(map);
   const markerGroup = L.layerGroup().addTo(map);
   const footprintGroup = L.layerGroup().addTo(map);
   const routeGroup = L.layerGroup().addTo(map);
@@ -19,10 +23,10 @@
   const $ = id => document.getElementById(id);
   const filters = () => ({
     rx: $('f-rx').checked, bright: $('f-bright').checked, thermal: $('f-thermal').checked,
-    rejected: $('f-rejected').checked, overlays: $('f-overlays').checked,
+    rejected: $('f-rejected').checked, overlays: $('f-overlays').checked, routes: $('f-routes').checked,
     minScore: +$('f-minscore').value || 0, minFrames: +$('f-minframes').value || 1,
   });
-  const FILTER_IDS = ['f-rx', 'f-bright', 'f-thermal', 'f-rejected', 'f-overlays', 'f-minscore', 'f-minframes'];
+  const FILTER_IDS = ['f-rx', 'f-bright', 'f-thermal', 'f-rejected', 'f-overlays', 'f-routes', 'f-minscore', 'f-minframes'];
   try {  // remember filter settings per browser
     const saved = JSON.parse(localStorage.getItem('ps-filters') || '{}');
     FILTER_IDS.forEach(id => { if (id in saved) { const el = $(id); el.type === 'checkbox' ? el.checked = saved[id] : el.value = saved[id]; } });
@@ -33,12 +37,14 @@
   }));
 
   async function refresh() {
-    const [summary, overlays, images, cands] = await Promise.all([
+    const [summary, overlays, images, cands, routes] = await Promise.all([
       fetch('api/summary').then(r => r.json()),
       fetch('api/overlays').then(r => r.json()),
       fetch('api/images').then(r => r.json()),
       fetch('api/groups').then(r => r.json()),
+      fetch('api/routes?paths=1').then(r => r.json()).catch(() => []),
     ]);
+    drawSavedRoutes(routes);
     $('mission').textContent = summary.mission || '';
     $('empty').hidden = summary.images > 0 || importState.busy;
     const c = summary.candidates || {};
@@ -47,7 +53,7 @@
 
     overlays.forEach(o => {
       if (!state.overlays.has(o.id)) {
-        const layer = L.imageOverlay('files/' + o.png, o.bounds, { opacity: 0.95, interactive: false });
+        const layer = L.imageOverlay('files/' + o.png, o.bounds, { opacity: 0.95, interactive: false, pane: 'imagery' });
         state.overlays.set(o.id, layer);
         overlayGroup.addLayer(layer);
       }
@@ -57,7 +63,9 @@
       L.polygon(i.footprint, { color: '#5d7a96', weight: 1, fill: false, opacity: 0.6, interactive: false }).addTo(footprintGroup);
     });
     state.cands = cands;
-    const pts = images.filter(i => i.lat).map(i => [i.lat, i.lon]);
+    // the first view covers what was flown and what is planned
+    const pts = images.filter(i => i.lat).map(i => [i.lat, i.lon])
+      .concat(routes.flatMap(rt => rt.path.length ? rt.path : rt.points));
     // fit once, and keep fitting while an import is still bringing images in
     if (pts.length && (!state.fitted || (importState.busy && pts.length !== state.fitN))) {
       map.fitBounds(L.latLngBounds(pts).pad(0.2)); state.fitted = true; state.fitN = pts.length;
@@ -81,6 +89,7 @@
   function render() {
     const f = filters();
     f.overlays ? map.addLayer(overlayGroup) : map.removeLayer(overlayGroup);
+    f.routes ? map.addLayer(savedRouteGroup) : map.removeLayer(savedRouteGroup);
     const list = $('list');
     list.innerHTML = '';
     markerGroup.clearLayers();
@@ -110,6 +119,37 @@
     });
     if (state.sel && !shown.some(c => c.id === state.sel)) state.sel = null;
     renderDetail();
+  }
+
+  // ---- saved routes ---------------------------------------------------------
+  const esc = t => String(t).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  let savedRoutesKey = '';
+  function drawSavedRoutes(routes) {
+    const key = JSON.stringify(routes.map(rt => [rt.id, rt.updated, rt.path.length]));
+    if (key === savedRoutesKey) return;              // unchanged: leave any open popup alone
+    savedRoutesKey = key;
+    savedRouteGroup.clearLayers();
+    routes.forEach(rt => {
+      const line = rt.path.length ? rt.path : rt.points;
+      if (line.length < 2) return;
+      const sm = rt.summary || {};
+      const facts = [rt.mode === 'area' ? 'search area' : 'line route',
+        sm.height_m != null ? `${sm.height_m} m` : null,
+        sm.duration_min != null ? `about ${sm.duration_min} min` : null,
+        sm.n_photos != null ? `${sm.n_photos} photos` : null].filter(Boolean).join(' · ');
+      const popup = `<b>${esc(rt.name)}</b><div class="sub">${facts}</div>`
+        + (rt.error ? `<div class="sub">Cannot be flown as saved: ${esc(rt.error)}</div>` : '')
+        + `<a class="btn" href="plan#route=${rt.id}">Open in planner</a>`
+        + (rt.error ? '' : `<a class="btn" href="api/routes/${rt.id}/kmz" download>KMZ</a>`);
+      if (rt.mode === 'area' && rt.points.length >= 3) {
+        L.polygon(rt.points, { pane: 'routes', color: '#b39ddb', weight: 1, dashArray: '4 6', fillOpacity: 0.04, interactive: false }).addTo(savedRouteGroup);
+      }
+      // a wide invisible line under the visible one makes it easy to click
+      L.polyline(line, { pane: 'routes', color: '#b39ddb', weight: 14, opacity: 0 }).bindPopup(popup).addTo(savedRouteGroup);
+      L.polyline(line, { pane: 'routes', color: '#b39ddb', weight: 2, opacity: 0.9, dashArray: rt.error ? '2 6' : null, interactive: false }).addTo(savedRouteGroup);
+      L.marker(line[0], { pane: 'routes', icon: L.divIcon({ className: '', iconSize: [0, 0], iconAnchor: [-6, 22],
+        html: `<div class="route-label">${esc(rt.name)}</div>` }) }).bindPopup(popup).addTo(savedRouteGroup);
+    });
   }
 
   function baseName(p) { return (p || '').split(/[\\/]/).pop(); }
