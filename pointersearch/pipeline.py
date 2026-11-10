@@ -20,6 +20,13 @@ from .terrain import load_ground
 from .capture import capture_key
 
 log = logging.getLogger("pointersearch")
+# Raised for a lens when its detection changes enough that images already in a mission
+# should be searched again. The review map offers to do that.
+DETECTOR_VERSION = {"thermal": 2}
+
+
+def detector_version(source: str | None) -> int:
+    return DETECTOR_VERSION.get(source or "", 1)
 IMAGE_SUFFIXES = {".jpg", ".jpeg"}
 
 
@@ -105,6 +112,7 @@ class Pipeline:
             "overlay_png": _rel(self.workdir, overlay.png_path) if overlay else None,
             "overlay_bounds": json.dumps(overlay.bounds) if overlay else None,
             "status": "ok", "error": None, "capture_key": capture_key(path) or f"single|{path}",
+            "proc_version": detector_version(meta.source),
         }
         image_id = self.store.upsert_image(record)
 

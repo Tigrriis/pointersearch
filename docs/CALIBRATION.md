@@ -27,6 +27,11 @@ file so defaults can be chosen per mission.
   under-ranked. Daytime frames light up sun-warmed dead branches; expect many
   thermal candidates in daylight.
 
+- 0.2.1: the red band is a pinkish red (about R 210, G 110, B 110). Red areas are now hits
+  in their own right (`red-hot`). Before, a red core joined to bright branches was treated
+  as one object too large to keep, so the hottest things in the frame were dropped.
+- Scores are per detector and are not comparable with each other; pick thresholds per detector.
+
 ## Results
 
 _None yet._

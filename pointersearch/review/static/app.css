@@ -122,6 +122,12 @@ progress { width:100%; height:10px; accent-color:var(--follow); }
   border:1px solid #3a444e; border-radius:8px; padding:8px 12px; display:flex; gap:12px; align-items:center;
   width:max-content; max-width:calc(100% - 24px); flex-wrap:wrap; justify-content:center; box-shadow:0 6px 24px rgba(0,0,0,.5); }
 .empty .row { display:flex; gap:8px; }
+.stale { position:absolute; z-index:500; left:50%; top:12px; transform:translateX(-50%); background:var(--panel);
+  border:1px solid var(--accent); border-radius:8px; padding:8px 12px; display:flex; gap:12px; align-items:center;
+  width:max-content; max-width:calc(100% - 90px); flex-wrap:wrap; justify-content:center; box-shadow:0 6px 24px rgba(0,0,0,.5); }
+.badge.hot { background:#ff5252; color:#fff; }
+.badge.dim { opacity:.45; }
+#list .title { display:flex; flex-wrap:wrap; gap:4px; }
 #map-wrap { position:relative; min-height:0; min-width:0; }
 #map-wrap > #map { position:absolute; inset:0; }
 

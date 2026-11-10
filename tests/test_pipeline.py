@@ -54,6 +54,10 @@ def test_pipeline_finds_planted_targets(mission):
         assert len(near) == 1, t["name"]
     jacket = next(g for g in groups if _dist_m((g["lat"], g["lon"]), (targets[0]["lat"], targets[0]["lon"])) < 3)
     assert jacket["n_frames"] >= 1 and set(jacket["detectors"]) >= {"rx"}
+    # each detector keeps its own score; the single "score" is only the largest of them
+    assert set(jacket["scores"]) == set(jacket["detectors"]) and jacket["score"] == max(jacket["scores"].values())
+    warm = next(g for g in groups if _dist_m((g["lat"], g["lon"]), (targets[2]["lat"], targets[2]["lon"])) < 3)
+    assert "thermal" in warm["scores"] and warm["scores"]["thermal"] > 5
     assert all(c["range_m"] is not None for c in cands)
 
     # a group decision applies to every sighting

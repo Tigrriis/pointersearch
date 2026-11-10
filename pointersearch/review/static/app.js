@@ -51,6 +51,11 @@
     state.imageCount = summary.images_ok || 0;
     if (summary.version) $('ver').textContent = 'v' + summary.version;
     $('empty').hidden = summary.images > 0 || importState.busy;
+    const st = summary.stale || { total: 0 };
+    $('stale').hidden = !st.total || importState.busy;
+    if (st.total) $('stale-text').textContent = st.thermal === st.total
+      ? `${st.total} thermal image${st.total > 1 ? 's were' : ' was'} searched by an older version that missed red-hot areas.`
+      : `${st.total} image${st.total > 1 ? 's were' : ' was'} searched by an older version.`;
     const c = summary.candidates || {};
     const g = summary.groups || {};
     $('stats').textContent = `${summary.images_ok} images · ${summary.n_groups || 0} objects (${g.pending || 0} pending · ${g.accepted || 0} accepted · ${g.followup || 0} follow-up · ${g.rejected || 0} rejected) from ${Object.values(c).reduce((a, b) => a + b, 0)} sightings`;
@@ -77,6 +82,22 @@
     render();
   }
 
+  // Each detector scores on its own scale (colour: how unusual; thermal: how far above its
+  // surroundings; bright: how vivid), so an object is ranked by the detectors that are ticked.
+  // With only "thermal" ticked the list is the thermal hits, strongest first.
+  function rankScore(c) {
+    const f = filters();
+    const on = Object.entries(c.scores || {}).filter(([d]) => f[d]).map(([, v]) => v);
+    return on.length ? Math.max(...on) : c.score;
+  }
+  const fmtScore = (d, v) => d === 'bright' ? v.toFixed(2) : v.toFixed(v >= 100 ? 0 : 1);
+  function scoreBadges(c) {
+    const f = filters();
+    return Object.entries(c.scores || {}).map(([d, v]) =>
+      `<span class="badge ${d}${f[d] ? '' : ' dim'}" title="${d === 'rx' ? 'colour: how unusual the colour is for its photo' : d === 'thermal' ? 'thermal: how far it stands above its surroundings' : 'bright: how vivid the colour is, 0 to 1'}">${d} ${fmtScore(d, v)}</span>`).join(' ')
+      + (c.red_hot ? ' <span class="badge hot" title="the aircraft marked this as its hottest band">red-hot</span>' : '');
+  }
+
   function visible(c) {
     const f = filters();
     if (!c.detectors.some(d => f[d])) return false;
@@ -98,7 +119,8 @@
     list.innerHTML = '';
     markerGroup.clearLayers();
     state.markers.clear();
-    const shown = state.cands.filter(visible);
+    const shown = state.cands.filter(visible).sort((a, b) =>
+      (f.thermal && !f.rx && !f.bright ? (b.red_hot ? 1 : 0) - (a.red_hot ? 1 : 0) : 0) || rankScore(b) - rankScore(a));
     $('shown').textContent = `showing ${shown.length} of ${state.cands.length}`;
     shown.forEach(c => {
       const color = COLORS[c.detector] || '#fff';
@@ -107,7 +129,7 @@
         color: c.status === 'accepted' ? '#3dc47e' : c.status === 'followup' ? '#4fc3f7' : color,
         weight: c.status === 'rejected' ? 1 : 2, fillColor: color, fillOpacity: c.status === 'rejected' ? 0.15 : 0.6,
       }).on('click', () => select(c.id, false));
-      m.bindTooltip(`${c.detectors.join('+')} ${c.score.toFixed(1)} · ${c.n_frames} frame${c.n_frames > 1 ? 's' : ''} · ${STATUS_LABEL[c.status] || c.status}`);
+      m.bindTooltip(`${Object.entries(c.scores || {}).map(([d, v]) => d + ' ' + fmtScore(d, v)).join(' · ')}${c.red_hot ? ' · red-hot' : ''} · ${c.n_frames} frame${c.n_frames > 1 ? 's' : ''} · ${STATUS_LABEL[c.status] || c.status}`);
       markerGroup.addLayer(m);
       state.markers.set(c.id, m);
 
@@ -115,7 +137,7 @@
       li.dataset.id = c.id;
       if (c.id === state.sel) li.classList.add('sel');
       li.innerHTML = `<img loading="lazy" src="files/${c.best.thumb}">
-        <div><div class="title">${c.detectors.map(d => `<span class="badge ${d}">${d}</span>`).join(' ')} ${c.score.toFixed(1)}</div>
+        <div><div class="title">${scoreBadges(c)}</div>
         <div class="sub">${c.area_m2 ?? '?'} m² · seen in ${c.n_frames} frame${c.n_frames > 1 ? 's' : ''}${c.min_range_m != null ? ' · ' + Math.round(c.min_range_m) + ' m from aircraft' : ''}</div></div>
         <div class="st ${c.status}">${STATUS_LABEL[c.status] || c.status}</div>`;
       li.addEventListener('click', () => select(c.id, true));
@@ -179,7 +201,7 @@
     const strip = c.thumbs.length > 1 ? `<div class="strip" title="other photos of this object; tap one to look at that shot">${c.thumbs.map((t, i) =>
       `<img src="files/${t}" data-cand="${c.members[i]}" class="${c.members[i] === shown ? 'on' : ''}">`).join('')}</div>` : '';
     el.innerHTML = `<div class="lens-tabs" id="lens-tabs">${lensTabs(c, view)}</div><img id="main-view" src="${view ? view.url : 'files/' + b.thumb}">${strip}
-      <div class="meta"><span>${c.detectors.map(d => `<span class="badge ${d}">${d}</span>`).join(' ')} score ${c.score.toFixed(2)}${temp}</span>
+      <div class="meta"><span>${scoreBadges(c)}${temp}</span>
       <span class="st ${c.status}">${STATUS_LABEL[c.status] || c.status}</span></div>
       <div class="meta"><span>${c.lat.toFixed(6)}, ${c.lon.toFixed(6)}</span><span>${c.area_m2 ?? '?'} m² · ${c.n_sightings} sighting${c.n_sightings > 1 ? 's' : ''} in ${c.n_frames} frame${c.n_frames > 1 ? 's' : ''}</span></div>
       <div class="meta"><span id="view-name">${view ? view.image_name : baseName(b.image_path)}</span><a class="btn" id="full-link" href="image/${view ? view.image_id : b.image_id}" target="_blank">full image</a></div>
@@ -256,7 +278,8 @@
   }
 
   function step(dir, keepIfNone) {
-    const shown = state.cands.filter(visible);
+    const ids = [...document.querySelectorAll('#list li')].map(li => +li.dataset.id);     // the order on screen
+    const shown = ids.map(id => state.cands.find(c => c.id === id)).filter(Boolean);
     if (!shown.length) return;
     let i = shown.findIndex(c => c.id === state.sel);
     const pendingOnly = shown.filter(c => c.status === 'pending');
@@ -393,6 +416,14 @@
     try { localStorage.setItem('ps-folder', folder); } catch (e) {}
     $('i-force').checked = false;
     state.views.clear();                          // close-ups depend on what was found
+    showImport(b);
+  });
+  $('stale-btn').addEventListener('click', async () => {
+    const res = await fetch('api/ingest/refresh', { method: 'POST' });
+    const b = await res.json().catch(() => ({}));
+    state.views.clear();
+    $('import-dlg').showModal();
+    if (!res.ok) { $('i-status').innerHTML = `<div class="err">${typeof b.detail === 'string' ? b.detail : 'Could not start.'}</div>`; return; }
     showImport(b);
   });
   $('i-stop').addEventListener('click', async () => { showImport(await fetch('api/ingest/stop', { method: 'POST' }).then(r => r.json())); });

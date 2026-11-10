@@ -52,6 +52,41 @@ On the review map press *Add images…*, choose the folder that holds the photos
   that changes how images are searched. Accept, follow-up and reject decisions
   are kept; undecided detections are replaced.
 
+## Reading the list
+
+Each object shows a score per detector, because the detectors measure different
+things on different scales:
+
+| Badge | Measures | Typical strong hit |
+|---|---|---|
+| `rx` | how unusual the colour is for its photo | hundreds; hi-vis on grass over 1000 |
+| `thermal` | how far it stands above its surroundings | tens |
+| `bright` | how vivid the colour is | 0 to 1 |
+| `red-hot` | the aircraft's palette marked it as its hottest band | no number |
+
+The list is ordered by the detectors that are ticked in the header. To work
+through thermal hits, untick *colour (RX)* and *bright*: the list becomes the
+thermal hits only, red-hot ones first, strongest first. A greyed badge is a
+detector you have unticked.
+
+## Thermal hits and red-hot areas
+
+Thermal frames are searched as pictures, not temperatures: brighter is hotter.
+If the palette paints its hottest band red, every red area of a plausible size
+becomes a hit labelled **red-hot**, even when it sits inside a larger warm area
+such as a core among sun-warmed branches. Larger red areas rank first.
+
+Things to know:
+
+- The red band is relative to each frame, so most daytime frames have some.
+  Sun-warmed dead timber and rock will be red-hot. Dawn, dusk and night are when
+  a red-hot hit most likely means a person or animal.
+- Red areas larger than `thermal.max_area_m2` (6 m²) are ignored as too big to be
+  a person or animal. Specks under about six pixels are ignored too.
+- After an update that changes how thermal frames are searched, a bar at the top
+  of the map offers **Search them again** for the frames already in the mission.
+  It needs the photo files where they were when added. Decisions are kept.
+
 ## Looking at an object through each lens
 
 The Matrice 4T saves a wide, a zoom and a thermal file for every shutter press.

@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS images (
     status TEXT DEFAULT 'ok',
     error TEXT,
     processed_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    capture_key TEXT         -- shared by the wide / zoom / thermal files of one shutter press
+    capture_key TEXT,        -- shared by the wide / zoom / thermal files of one shutter press
+    proc_version INTEGER     -- detector version that searched this image (NULL = 1)
 );
 CREATE TABLE IF NOT EXISTS candidates (
     id INTEGER PRIMARY KEY,
@@ -74,6 +75,8 @@ class Store:
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_candidates_group ON candidates(group_id)")
         if "capture_key" not in {r["name"] for r in self.conn.execute("PRAGMA table_info(images)")}:
             self.conn.execute("ALTER TABLE images ADD COLUMN capture_key TEXT")
+        if "proc_version" not in {r["name"] for r in self.conn.execute("PRAGMA table_info(images)")}:
+            self.conn.execute("ALTER TABLE images ADD COLUMN proc_version INTEGER")
         self.conn.execute("CREATE INDEX IF NOT EXISTS idx_images_capture ON images(capture_key)")
         # missions processed before lens switching existed: derive the key from the file name
         from .capture import capture_key
@@ -132,6 +135,16 @@ class Store:
                 self.conn.execute(f"UPDATE images SET source='split', overlay_png=NULL, overlay_bounds=NULL, "
                                   f"footprint=NULL WHERE id IN ({marks})", chunk)
         return {"frames": len(ids), "detections_removed": removed}
+
+    def stale_images(self, versions: dict[str, int]) -> list[dict]:
+        """Images searched by an older detector than the current one for their lens."""
+        out = []
+        for source, version in versions.items():
+            rows = self.conn.execute(
+                "SELECT id, path, source FROM images WHERE status='ok' AND source=? AND COALESCE(proc_version, 1) < ?",
+                (source, version)).fetchall()
+            out += [dict(r) for r in rows]
+        return out
 
     def get_image(self, image_id: int) -> dict | None:
         r = self.conn.execute("SELECT * FROM images WHERE id=?", (image_id,)).fetchone()
@@ -265,6 +278,10 @@ class Store:
                 "n_sightings": len(members), "n_frames": len({c["image_id"] for c in members}),
                 "min_range_m": nearest["range_m"], "area_m2": best["area_m2"],
                 "rx_score": max((c["score"] for c in members if c["detector"] == "rx"), default=None),
+                "red_hot": any((c.get("extra") or {}).get("red_hot") for c in members),
+                # each detector scores on its own scale, so keep them apart
+                "scores": {d: max(c["score"] for c in members if c["detector"] == d)
+                           for d in sorted({c["detector"] for c in members})},
                 "best": best, "members": [c["id"] for c in members],
                 "thumbs": [c["thumb"] for c in members[:8]],
                 "note": next((c["note"] for c in members if c["note"]), None),

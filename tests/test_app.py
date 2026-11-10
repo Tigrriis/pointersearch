@@ -205,6 +205,36 @@ def test_ingest_job_processes_a_folder(mission, tmp_path):
     assert "no JPEG" in wait_for(job.status, {"done"})["message"]
 
 
+def test_images_searched_by_an_older_detector_can_be_searched_again(mission, tmp_path):
+    import sqlite3
+    from pointersearch.pipeline import DETECTOR_VERSION, Pipeline
+    Config().save(tmp_path)
+    p = Pipeline(tmp_path)
+    p.process_path(mission["images"])
+    n_thermal = sum(1 for i in p.store.list_images() if i["source"] == "thermal")
+    assert n_thermal > 0 and p.store.stale_images(DETECTOR_VERSION) == []      # freshly searched
+    decided = next(c for c in p.store.list_candidates() if c["detector"] == "thermal")
+    p.store.set_decision(decided["id"], "accepted")
+    p.store.close()
+
+    # as left by a version before the thermal detector changed
+    con = sqlite3.connect(tmp_path / "pointersearch.db")
+    con.execute("UPDATE images SET proc_version=NULL"); con.commit(); con.close()
+
+    c = TestClient(create_app(tmp_path))
+    assert c.get("/api/summary").json()["stale"] == {"total": n_thermal, "thermal": n_thermal}   # only thermal changed
+    r = c.post("/api/ingest/refresh")
+    assert r.status_code == 200 and r.json()["total"] == n_thermal
+    s = wait_for(lambda: c.get("/api/ingest").json(), {"done", "error"})
+    assert s["state"] == "done" and s["added"] == n_thermal and "processed again" in s["message"]
+    assert c.get("/api/summary").json()["stale"]["total"] == 0
+    assert c.post("/api/ingest/refresh").status_code == 400                    # nothing left to do
+    # the reviewer's decision survived
+    kept = [g for g in c.get("/api/groups").json() if g["status"] == "accepted"]
+    assert len(kept) == 1 and "thermal" in kept[0]["detectors"]
+    assert TestClient(create_app(tmp_path), client=("10.0.0.9", 1)).post("/api/ingest/refresh").status_code == 403
+
+
 def test_ingest_api_with_watch_and_stop(mission, tmp_path):
     Config().save(tmp_path)
     c = TestClient(create_app(tmp_path))

@@ -17,6 +17,7 @@ from ..config import Config
 from ..export import FORMATS, export
 from ..ingest import IngestError, IngestJob, pick_folder
 from ..mission import MissionError, default_home, plan_mission, points_from_store
+from ..pipeline import DETECTOR_VERSION
 from ..saved_routes import list_routes
 from ..store import Store
 from .. import __version__
@@ -62,6 +63,8 @@ def create_app(workdir: str | Path, tiles_dir: str | Path | None = None, mission
         s = store.summary()
         s["mission"] = mission_name or workdir.name
         s["version"] = __version__
+        stale = store.stale_images(DETECTOR_VERSION)
+        s["stale"] = {"total": len(stale), "thermal": sum(1 for i in stale if i["source"] == "thermal")}
         s["routes"] = len(list_routes(workdir))
         s["followup"] = {"transit_height_m": cfg.followup.transit_height_m,
                          "inspect_height_m": cfg.followup.inspect_height_m,
@@ -192,6 +195,16 @@ def create_app(workdir: str | Path, tiles_dir: str | Path | None = None, mission
         except IngestError as exc:
             running = "already running" in str(exc)
             raise HTTPException(409 if running else 400, str(exc))
+
+    @app.post("/api/ingest/refresh")
+    def ingest_refresh(request: Request):
+        """Search again the images that were searched by an older detector version."""
+        require_local(request)
+        stale = store.stale_images(DETECTOR_VERSION)
+        try:
+            return ingest.start_files([i["path"] for i in stale], "images searched by an older version")
+        except IngestError as exc:
+            raise HTTPException(409 if "already running" in str(exc) else 400, str(exc))
 
     @app.post("/api/ingest/stop")
     def ingest_stop(request: Request):

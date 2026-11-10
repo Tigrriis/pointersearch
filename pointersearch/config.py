@@ -67,6 +67,11 @@ class ThermalConfig:
     min_area_m2: float = 0.05
     max_area_m2: float = 6.0
     max_candidates: int = 25
+    # Palettes that paint the hottest band red: treat each red area as a hot spot in its
+    # own right, even inside a larger warm region.
+    red_hot: bool = True
+    red_min_area_m2: float = 0.01
+    red_min_px: int = 6                # ignore specks smaller than this many pixels
     # Radiometric mode via the DJI Thermal SDK (libdirp). Optional.
     dirp_library: str | None = None    # path to libdirp.so / libdirp.dll
     temp_min_c: float = 20.0           # radiometric band of interest

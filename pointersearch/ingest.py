@@ -53,6 +53,22 @@ class IngestJob:
             self._thread.start()
         return self.status()
 
+    def start_files(self, files: list[str], label: str = "images already in the mission") -> dict:
+        """Search again a given list of images that are already in the mission."""
+        paths = [Path(f) for f in files]
+        if not paths:
+            raise IngestError("there is nothing to search again")
+        with self._lock:
+            if self._thread is not None and self._thread.is_alive():
+                raise IngestError("an import is already running for this mission")
+            self._stop.clear()
+            self._s.update(state="running", folder=label, total=len(paths), done=0, added=0, skipped=0,
+                           current=None, message=None, watch=False)
+            self._thread = threading.Thread(target=self._run, args=(None, False, True, paths), daemon=True,
+                                            name=f"ingest-{self.workdir.name}")
+            self._thread.start()
+        return self.status()
+
     def stop(self) -> dict:
         self._stop.set()
         return self.status()
@@ -67,11 +83,16 @@ class IngestJob:
         with self._lock:
             self._s.update(kw)
 
-    def _run(self, folder: Path, watch: bool, force: bool = False):
+    def _run(self, folder: Path | None, watch: bool, force: bool = False, files: list[Path] | None = None):
         pipeline = None
         try:
             pipeline = Pipeline(self.workdir)
-            files = sorted(p for p in folder.rglob("*") if p.suffix.lower() in IMAGE_SUFFIXES and p.is_file())
+            missing = 0
+            if files is None:
+                files = sorted(p for p in folder.rglob("*") if p.suffix.lower() in IMAGE_SUFFIXES and p.is_file())
+            else:
+                missing = sum(1 for p in files if not p.is_file())
+                files = [p for p in files if p.is_file()]
             self._set(total=len(files))
             added = skipped = 0
             for i, f in enumerate(files):
@@ -91,7 +112,10 @@ class IngestJob:
             if not watch:
                 msg = (f"{added} image(s) {'processed again' if force else 'added'}"
                        + (f", {skipped} already imported or unusable" if skipped else ""))
-                if not files:
+                if missing:
+                    msg += (f"; {missing} photo file(s) were not found, is the card or folder connected "
+                            "at the same place as before?")
+                if not files and not missing:
                     msg = "no JPEG images found in that folder"
                 self._set(state="done", current=None, message=msg)
                 return

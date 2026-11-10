@@ -21,6 +21,9 @@
   across batteries.
 - [x] Saved routes shown on the review map
 - [x] Switch each object between the wide, zoom and thermal frames of the same shutter press
+- [x] Red-hot palette areas as thermal hits; per-detector scores; search-again prompt
+- Radiometric thermal (temperatures from the R-JPEG through DJI's Thermal SDK) so hits can be
+  limited to body temperature instead of "hottest in frame".
 - Verify lens matching on real Matrice 4T files: file naming, zoom focal length in the
   metadata, and the alignment offsets between lenses.
 - [x] Hosted planner with individual logins (Render blueprint); route files move between it

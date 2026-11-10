@@ -65,20 +65,32 @@ class DirpReader:
             self.lib.dirp_destroy(handle)
 
 
+def red_mask(bgr: np.ndarray) -> np.ndarray:
+    """Pixels the aircraft's palette painted as its hottest band.
+
+    Measured on Matrice 4T frames the band is a pinkish red (about R 210, G 110, B 110),
+    softened further at edges by JPEG compression, so the test is "clearly redder than
+    grey" instead of "pure red".
+    """
+    if bgr.ndim == 2:
+        return np.zeros(bgr.shape, bool)
+    b, g, r = (bgr[:, :, i].astype(np.int16) for i in range(3))
+    return (r > 120) & ((r - np.maximum(g, b)) > 35)
+
+
 def heat_field(bgr: np.ndarray) -> np.ndarray:
     """Relative heat per pixel from a rendered thermal picture: brighter means hotter.
 
     Several DJI palettes are white-hot greyscale with the hottest band painted red. A
     plain greyscale conversion turns that red into a mid grey, ranking the hottest
-    pixels below merely warm ones, so strongly red pixels are lifted above white.
+    pixels below merely warm ones, so red pixels are lifted above white.
     """
     if bgr.ndim == 2:
         return bgr.astype(np.float32)
     field = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY).astype(np.float32)
     b, g, r = (bgr[:, :, i].astype(np.int16) for i in range(3))
-    excess = r - np.maximum(g, b)                      # how much redder than grey
-    red = (r > 140) & (excess > 50)
-    field[red] = 255.0 + excess[red] * 0.2             # hotter than the whitest grey
+    red = red_mask(bgr)
+    field[red] = 255.0 + (r - np.maximum(g, b))[red] * 0.2      # hotter than the whitest grey
     return field
 
 
@@ -97,12 +109,18 @@ class ThermalDetector:
             except Exception:
                 temps = None
 
+        red = None
         if temps is not None:
             field = temps
             scale = 1.0
         else:
             small, scale = downscale(heat_field(bgr), 1280)
             field = small.astype(np.float32)
+            if self.cfg.red_hot and bgr.ndim == 3:
+                rm = red_mask(bgr).astype(np.uint8)
+                if scale != 1.0:
+                    rm = cv2.resize(rm, (field.shape[1], field.shape[0]), interpolation=cv2.INTER_NEAREST)
+                red = rm
 
         sigma = self.cfg.background_sigma_px
         background = cv2.GaussianBlur(field, (0, 0), sigma)
@@ -119,4 +137,24 @@ class ThermalDetector:
             for c in cands:
                 x, y, w, h = c.bbox
                 c.extra["peak_temp_c"] = float(np.max(temps[y:y + h, x:x + w]))
+
+        if red is not None and red.any():
+            # The red band is what the aircraft itself marked as hottest. Find those areas
+            # on their own, so a red-hot core is kept even when it sits inside a warm region
+            # that is too large to be a person or animal and is discarded as a whole.
+            red = cv2.morphologyEx(red, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))      # bridge JPEG gaps
+            px_area = (gsd_m / scale) ** 2
+            min_area = max(self.cfg.red_min_area_m2, self.cfg.red_min_px * px_area)
+            hot = blobs_from_mask(red.astype(bool), score, scale, gsd_m, min_area, self.cfg.max_area_m2,
+                                  self.name, self.cfg.max_candidates, open_iters=0)
+            for c in hot:
+                c.extra["red_hot"] = True
+            hot.sort(key=lambda c: c.area_m2, reverse=True)     # a body-sized area before a speck
+
+            def holds(c, other):               # other's centre lies inside c's box
+                x, y, w, h = c.bbox
+                return x <= other.px <= x + w and y <= other.py <= y + h
+            # a warm region that merely surrounds a red-hot core is the same thing: keep the core
+            cands = hot + [c for c in cands if not any(holds(c, h_) for h_ in hot)]
+            cands = cands[:self.cfg.max_candidates]            # red-hot first (largest first), then the rest by score
         return cands
